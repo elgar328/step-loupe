@@ -45,3 +45,10 @@ the NIST MBE PMI Validation & Conformance Testing set.
 
 The hosted demo is deployed to the `gh-pages` branch and each release attaches a
 downloadable, offline `step-loupe.html` — see [docs/RELEASING.md](docs/RELEASING.md).
+
+## License
+
+Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)
+at your option — the same as [step-io](https://github.com/elgar328/step-io).
+
+The bundled example `sample/nist-ctc05.step` is a NIST public-domain part.
