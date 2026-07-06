@@ -32,3 +32,8 @@ sample/               example STEP file
 
 `sample/nist-ctc05.step` is **NIST CTC 05** (AP242 e1), a public-domain part from
 the NIST MBE PMI Validation & Conformance Testing set.
+
+## Releasing
+
+The hosted demo is deployed to the `gh-pages` branch and each release attaches a
+downloadable, offline `step-loupe.html` — see [docs/RELEASING.md](docs/RELEASING.md).
