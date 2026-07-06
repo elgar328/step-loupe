@@ -16,10 +16,19 @@ drag-and-drop.
 
 ```sh
 wasm-pack build --target web --release
-python3 build_single.py   # inlines the wasm glue into step-loupe.html
+python3 scripts/build_single.py   # inlines the wasm glue → step-loupe.html
+```
+
+## Layout
+
+```
+src/lib.rs            Rust → wasm glue (load_step)
+src/index.html        viewer frontend (source; not the deployed page)
+scripts/              build tooling
+sample/               example STEP file
 ```
 
 ## Example file
 
-`docs/nist-ctc05.step` is **NIST CTC 05** (AP242 e1), a public-domain part from
+`sample/nist-ctc05.step` is **NIST CTC 05** (AP242 e1), a public-domain part from
 the NIST MBE PMI Validation & Conformance Testing set.
