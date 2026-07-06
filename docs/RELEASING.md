@@ -66,13 +66,6 @@ gh release create vX.Y.Z step-loupe.html --title "vX.Y.Z" --notes-file <(
 ./scripts/deploy-gh-pages.sh
 ```
 
-First time only — enable Pages on the `gh-pages` branch:
-
-```sh
-gh api -X PUT repos/elgar328/step-loupe/pages \
-  -f 'source[branch]=gh-pages' -f 'source[path]=/'
-```
-
 Demo URL: <https://elgar328.github.io/step-loupe/?file=nist-ctc05.step>
 (example = NIST CTC 05, AP242 e1, public domain).
 
