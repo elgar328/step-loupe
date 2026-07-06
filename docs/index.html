@@ -285,11 +285,17 @@ function buildObjects(geom) {
 
 function fitCamera(box) {
   if (box.isEmpty()) return;
+  // Rotate around the AABB centre; frame the bounding sphere to the narrower of
+  // the vertical/horizontal FOV so it fills the view (small margin) in both
+  // landscape and portrait viewports.
   const c = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3()).length() || 1;
+  const radius = box.getSize(new THREE.Vector3()).length() / 2 || 1;
+  const vfov = camera.fov * Math.PI / 180;
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * camera.aspect);
+  const dist = radius / Math.sin(Math.min(vfov, hfov) / 2) * 1.1;   // 1.1 = ~10% margin
   controls.target.copy(c);
-  camera.position.copy(c).add(new THREE.Vector3(1, 0.8, 1).multiplyScalar(size));
-  camera.near = size / 1000; camera.far = size * 1000; camera.updateProjectionMatrix();
+  camera.position.copy(c).add(new THREE.Vector3(1, 0.8, 1).normalize().multiplyScalar(dist));
+  camera.near = radius / 100; camera.far = radius * 1000; camera.updateProjectionMatrix();
   controls.update();
 }
 
