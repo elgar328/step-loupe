@@ -49,6 +49,4 @@ downloadable, offline `step-loupe.html` — see [docs/RELEASING.md](docs/RELEASI
 ## License
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)
-at your option — the same as [step-io](https://github.com/elgar328/step-io).
-
-The bundled example `sample/nist-ctc05.step` is a NIST public-domain part.
+at your option.
