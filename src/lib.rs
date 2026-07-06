@@ -539,18 +539,15 @@ impl Builder {
     ) -> Node {
         let eid = self.imap_id(imap, edge.key());
         self.hl_ids.entry(edge.key()).or_default().push(eid);
-        if !self.geom.contains_key(&eid) {
+        self.geom.entry(eid).or_insert_with(|| {
             let (d, fallback) = sample_edge(edge, world);
-            self.geom.insert(
-                eid,
-                Geom {
-                    t: "line",
-                    d,
-                    tri: vec![],
-                    fallback,
-                },
-            );
-        }
+            Geom {
+                t: "line",
+                d,
+                tri: vec![],
+                fallback,
+            }
+        });
         let curve = edge.curve();
         let cname = kind_name(&format!("{:?}", curve.kind()));
         let mut meta = vec![kv("curve", &cname)];
@@ -590,18 +587,15 @@ impl Builder {
             // A feature may reference the cartesian point directly; map it to the
             // vertex's rendered point so such references still highlight.
             self.hl_ids.entry(p.key()).or_default().push(vid);
-            if !self.geom.contains_key(&vid) {
+            self.geom.entry(vid).or_insert_with(|| {
                 let c = apply(world, p.xyz());
-                self.geom.insert(
-                    vid,
-                    Geom {
-                        t: "point",
-                        d: vec![c[0] as f32, c[1] as f32, c[2] as f32],
-                        tri: vec![],
-                        fallback: false,
-                    },
-                );
-            }
+                Geom {
+                    t: "point",
+                    d: vec![c[0] as f32, c[1] as f32, c[2] as f32],
+                    tri: vec![],
+                    fallback: false,
+                }
+            });
             let [x, y, z] = p.xyz();
             meta.push(kv("coords", &format!("{x}, {y}, {z}")));
         }
@@ -852,7 +846,8 @@ fn tessellate_nurbs(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize) -> Vec<[f64
     }
     let u0 = u[p];
     let u1 = u[n];
-    if !(u1 > u0) {
+    // Bail unless the knot span is strictly positive (partial_cmp also bails on NaN).
+    if u1.partial_cmp(&u0) != Some(std::cmp::Ordering::Greater) {
         return cp.to_vec();
     }
     let eval = |t: f64| eval_point(cp, w, u, p, t);
