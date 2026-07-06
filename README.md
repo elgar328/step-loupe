@@ -1,30 +1,38 @@
 # step-loupe
 
-A single-file, in-browser **STEP (ISO 10303) viewer** built on
-[step-io](https://crates.io/crates/step-io). It renders b-rep geometry, the
-assembly tree, PMI (features, dimensions, tolerances, datums) and a provenance
-report — all inline in one self-contained HTML file (three.js from CDN).
+**The example app for [step-io](https://github.com/elgar328/step-io).**
+
+A single-file, in-browser **STEP (ISO 10303) viewer** that renders what step-io
+reads — b-rep geometry, the assembly tree, PMI (features, dimensions, tolerances,
+datums), units, and a provenance report — with three.js, inline in one
+self-contained HTML file. `src/lib.rs` is the whole glue between step-io
+(compiled to WebAssembly) and the page, so it doubles as a worked example of
+step-io's reading API.
 
 ## Demo
 
-<https://elgar328.github.io/step-loupe/?file=nist-ctc05.step>
+**<https://elgar328.github.io/step-loupe/?file=nist-ctc05.step>**
 
-Open any STEP file with `?file=<url>`, or use the **Open STEP file** button /
-drag-and-drop.
+Point `?file=<url>` at any STEP file (its host must allow CORS), or use the
+**Open STEP file** button / drag-and-drop.
 
 ## Build
+
+Requires Rust with [wasm-pack](https://rustwasm.github.io/wasm-pack/), plus Python 3.
 
 ```sh
 wasm-pack build --target web --release
 python3 scripts/build_single.py   # inlines the wasm glue → step-loupe.html
 ```
 
+The result, `step-loupe.html`, is fully self-contained (three.js loads from a CDN).
+
 ## Layout
 
 ```
 src/lib.rs            Rust → wasm glue (load_step)
 src/index.html        viewer frontend (source; not the deployed page)
-scripts/              build tooling
+scripts/              build + deploy tooling
 sample/               example STEP file
 ```
 

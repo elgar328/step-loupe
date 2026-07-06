@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Single-file, in-browser STEP (ISO 10303) viewer built on
-  [step-io](https://crates.io/crates/step-io): b-rep geometry, the assembly tree,
+  [step-io](https://github.com/elgar328/step-io): b-rep geometry, the assembly tree,
   PMI (features, dimensions, tolerances, datums), and a provenance report,
   rendered with three.js.
 - Load a model via the `?file=<url>` query parameter, the **Open STEP file**
