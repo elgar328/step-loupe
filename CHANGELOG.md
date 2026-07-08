@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Read solids with internal voids (`BREP_WITH_VOIDS`): a void solid now appears
+  in the tree with its outer shell, and each internal cavity is shown as a
+  `Void` group of its faces (requires step-io 0.2.3).
+
+### Changed
+
+- Bump `step-io` to 0.2.3.
+
 ## [0.1.0] - 2026-07-07
 
 ### Added

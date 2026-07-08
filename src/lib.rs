@@ -5,7 +5,7 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
-use step_io::scene::geometry::{Edge, Solid, Vertex};
+use step_io::scene::geometry::{Edge, Face, Solid, Vertex};
 use step_io::scene::pmi::{Feature, FeatureGeometry};
 use step_io::scene::product::{ApprovalDate, Person, ProductDef, Transform};
 use step_io::scene::Rgb;
@@ -453,53 +453,23 @@ impl Builder {
         let mut solid_edge_ids: Vec<u32> = Vec::new();
         for face in solid.faces() {
             face_count += 1;
-            let fid = self.imap_id(imap, face.key());
-            let sk = kind_name(&format!("{:?}", face.surface().kind()));
-            let mut fmeta = vec![kv("surface", &sk)];
-            if let Some(c) = face.color() {
-                fmeta.push(kv("color", &rgb_hex(c)));
+            let (node, edge_ids) = self.face_node(&face, world, imap);
+            solid_edge_ids.extend(&edge_ids);
+            faces.push(node);
+        }
+        // Internal voids (BREP_WITH_VOIDS): one group per cavity shell, its
+        // faces surfaced like the outer shell's so the cavity is fully read.
+        let voids = solid.voids();
+        let void_count = voids.len();
+        for (i, cavity) in voids.into_iter().enumerate() {
+            let mut cavity_faces = Vec::new();
+            for face in cavity {
+                face_count += 1;
+                let (node, edge_ids) = self.face_node(&face, world, imap);
+                solid_edge_ids.extend(&edge_ids);
+                cavity_faces.push(node);
             }
-            if let Some(t) = face.transparency() {
-                fmeta.push(kv("transparency", &t.to_string()));
-            }
-            if let Some(l) = face.layer() {
-                fmeta.push(kv("layer", l));
-            }
-            if !face.is_visible() {
-                fmeta.push(kv("visible", "false"));
-            }
-            fmeta.push(kv("same sense", &face.same_sense().to_string()));
-            let mut bounds = Vec::new();
-            let mut face_edge_ids: Vec<u32> = Vec::new();
-            for bound in face.bounds() {
-                let bid = self.imap_id(imap, bound.key());
-                let mut edges = Vec::new();
-                for (edge, _fwd) in bound.oriented_edges() {
-                    let e = self.edge_node(&edge, world, imap);
-                    face_edge_ids.push(e.id);
-                    edges.push(e);
-                }
-                bounds.push(Node {
-                    id: bid,
-                    kind: "Bound",
-                    label: "Bound".into(),
-                    meta: vec![],
-                    children: edges,
-                });
-            }
-            // a feature referencing this face highlights the face's edges
-            self.hl_ids
-                .entry(face.key())
-                .or_default()
-                .extend(&face_edge_ids);
-            solid_edge_ids.extend(&face_edge_ids);
-            faces.push(Node {
-                id: fid,
-                kind: "Face",
-                label: format!("Face ({sk})"),
-                meta: fmeta,
-                children: bounds,
-            });
+            faces.push(group(&format!("Void {}", i + 1), cavity_faces));
         }
         self.hl_ids
             .entry(solid.key())
@@ -522,6 +492,9 @@ impl Builder {
             meta.push(kv("visible", "false"));
         }
         meta.push(kv("faces", &face_count.to_string()));
+        if void_count > 0 {
+            meta.push(kv("voids", &void_count.to_string()));
+        }
         Node {
             id: sid,
             kind: "Solid",
@@ -529,6 +502,63 @@ impl Builder {
             meta,
             children: faces,
         }
+    }
+
+    /// One face's tree node plus the ids of its edges (for highlight
+    /// aggregation). Shared by a solid's outer shell and its void cavities.
+    fn face_node(
+        &mut self,
+        face: &Face<'_>,
+        world: &Mat,
+        imap: &mut HashMap<EntityKey, u32>,
+    ) -> (Node, Vec<u32>) {
+        let fid = self.imap_id(imap, face.key());
+        let sk = kind_name(&format!("{:?}", face.surface().kind()));
+        let mut fmeta = vec![kv("surface", &sk)];
+        if let Some(c) = face.color() {
+            fmeta.push(kv("color", &rgb_hex(c)));
+        }
+        if let Some(t) = face.transparency() {
+            fmeta.push(kv("transparency", &t.to_string()));
+        }
+        if let Some(l) = face.layer() {
+            fmeta.push(kv("layer", l));
+        }
+        if !face.is_visible() {
+            fmeta.push(kv("visible", "false"));
+        }
+        fmeta.push(kv("same sense", &face.same_sense().to_string()));
+        let mut bounds = Vec::new();
+        let mut face_edge_ids: Vec<u32> = Vec::new();
+        for bound in face.bounds() {
+            let bid = self.imap_id(imap, bound.key());
+            let mut edges = Vec::new();
+            for (edge, _fwd) in bound.oriented_edges() {
+                let e = self.edge_node(&edge, world, imap);
+                face_edge_ids.push(e.id);
+                edges.push(e);
+            }
+            bounds.push(Node {
+                id: bid,
+                kind: "Bound",
+                label: "Bound".into(),
+                meta: vec![],
+                children: edges,
+            });
+        }
+        // a feature referencing this face highlights the face's edges
+        self.hl_ids
+            .entry(face.key())
+            .or_default()
+            .extend(&face_edge_ids);
+        let node = Node {
+            id: fid,
+            kind: "Face",
+            label: format!("Face ({sk})"),
+            meta: fmeta,
+            children: bounds,
+        };
+        (node, face_edge_ids)
     }
 
     fn edge_node(
