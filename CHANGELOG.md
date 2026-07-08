@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-09
+
 ### Added
 
 - Read solids with internal voids (`BREP_WITH_VOIDS`): a void solid now appears
@@ -28,5 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Load a model via the `?file=<url>` query parameter, the **Open STEP file**
   button, or drag-and-drop; responsive layout for narrow (mobile) screens.
 
-[Unreleased]: https://github.com/elgar328/step-loupe/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/elgar328/step-loupe/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/elgar328/step-loupe/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/elgar328/step-loupe/releases/tag/v0.1.0
