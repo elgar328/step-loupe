@@ -174,7 +174,7 @@ dependencies = [
 
 [[package]]
 name = "step-loupe"
-version = "0.1.2-dev"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
