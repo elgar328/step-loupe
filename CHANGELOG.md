@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Switch the view's up axis between Y and Z from the **Y↑** button in the
+  view's corner, or open with `?up=z`; nacre-playground opens its parts Z-up.
+
 ## [0.1.2] - 2026-10-05
 
 ### Added

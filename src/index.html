@@ -35,6 +35,30 @@
   }
   pre { white-space: pre-wrap; word-break: break-all; margin: 4px 0; font-size: 11px; color: #333; }
   .drop-hi { outline: 3px dashed #4a90e2; outline-offset: -6px; }
+  /* up-axis menu: one quiet button in the view's corner says which axis is up, and
+     opens the choice below it. Button and menu sit on one plate whose edge is lighter
+     than the view's #1e1e1e, so it reads as a control rather than a hole in the scene. */
+  #up {
+    position: absolute; top: 8px; right: 8px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+  }
+  #up[hidden], #up-menu[hidden] { display: none; }   /* display:flex would beat [hidden] */
+  #up-btn, #up-menu { background: #2a2d33; border: 1px solid #4b5059; border-radius: 6px; }
+  #up-btn {
+    font: 600 12px system-ui, sans-serif; color: #b8bec7;
+    padding: 5px 10px; cursor: pointer;
+  }
+  #up-btn:hover, #up-btn[aria-expanded="true"] { color: #fff; }
+  #up-menu { display: flex; flex-direction: column; padding: 4px; }
+  #up-menu button {
+    font: 12px system-ui, sans-serif; color: #b8bec7; background: none; border: 0;
+    border-radius: 4px; padding: 5px 10px; text-align: left; cursor: pointer; white-space: nowrap;
+  }
+  #up-menu button:hover { background: #3a3e46; color: #fff; }
+  /* The chosen axis: a check and full-strength text, no fill. */
+  #up-menu button::before { content: '\2713'; display: inline-block; width: 1.3em; visibility: hidden; }
+  #up-menu button[aria-checked="true"] { color: #fff; }
+  #up-menu button[aria-checked="true"]::before { visibility: visible; }
 
   /* file control */
   #filebar { display: flex; align-items: center; gap: 8px; flex: none; padding: 8px 8px 6px; }
@@ -157,6 +181,8 @@
     #side-scroll { min-height: 0; overscroll-behavior: contain; } /* scroll in-panel, no page bleed */
     #detail { max-height: 40%; }                        /* inspector share of the bottom half */
     .row { padding: 5px 4px; }                          /* larger touch targets */
+    #up-btn { min-height: 44px; min-width: 48px; font-size: 14px; }
+    #up-menu button { min-height: 44px; font-size: 14px; }
   }
 </style>
 </head>
@@ -178,6 +204,13 @@
   </div>
   <div id="view">
     <div id="drop">Drop a STEP file here</div>
+    <div id="up" hidden>
+      <button type="button" id="up-btn" title="Up axis" aria-haspopup="menu" aria-expanded="false">Y↑</button>
+      <div id="up-menu" role="menu" hidden>
+        <button type="button" role="menuitemradio" data-up="y" aria-checked="true">Y axis up</button>
+        <button type="button" role="menuitemradio" data-up="z" aria-checked="false">Z axis up</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -208,7 +241,9 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1e1e1e);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.001, 1e7);
 camera.position.set(1, 1, 1);
-const controls = new OrbitControls(camera, renderer.domElement);
+// Rebuilt by setUp(): OrbitControls fixes its orbit axis from camera.up when it is
+// constructed, so changing camera.up alone would leave every later drag on the old axis.
+let controls = new OrbitControls(camera, renderer.domElement);
 let root = new THREE.Group();
 scene.add(root);
 
@@ -279,7 +314,50 @@ function buildObjects(geom) {
   return box;
 }
 
+// ---- up axis ----
+// STEP carries no "up": Y-up CADs (SolidWorks, Inventor, Creo) and Z-up ones (CATIA,
+// NX, Onshape, FreeCAD) write the same kind of file. Each load starts at what its source
+// says — ?up= for a file named in the address, Y for one opened or dropped here — and is
+// not remembered, since the next file may come from the other kind of CAD. The default
+// view looks from the same height either way; only which axis is up changes.
+const UP = {
+  y: { up: new THREE.Vector3(0, 1, 0), forward: new THREE.Vector3(1, 0.8, 1) },
+  z: { up: new THREE.Vector3(0, 0, 1), forward: new THREE.Vector3(1, -1, 0.8) },
+};
+let upAxis = 'y';
+let lastBox = new THREE.Box3();
+const upParam = (new URLSearchParams(location.search).get('up') || '').toLowerCase() === 'z' ? 'z' : 'y';
+
+function setUp(axis) {
+  upAxis = axis;
+  controls.dispose();
+  camera.up.copy(UP[axis].up);
+  controls = new OrbitControls(camera, renderer.domElement);
+  fitCamera(lastBox);
+  const btn = document.getElementById('up-btn');
+  btn.textContent = axis.toUpperCase() + '\u2191';
+  btn.setAttribute('aria-label', `Up axis: ${axis.toUpperCase()}`);
+  for (const b of document.querySelectorAll('#up-menu button')) {
+    b.setAttribute('aria-checked', String(b.dataset.up === axis));
+  }
+}
+function openUpMenu(on) {
+  document.getElementById('up-menu').hidden = !on;
+  document.getElementById('up-btn').setAttribute('aria-expanded', String(on));
+}
+document.getElementById('up-btn').addEventListener('click', () =>
+  openUpMenu(document.getElementById('up-menu').hidden));
+for (const b of document.querySelectorAll('#up-menu button')) {
+  b.addEventListener('click', () => { openUpMenu(false); setUp(b.dataset.up); });
+}
+// Ways out without choosing: a press anywhere else, or Escape.
+document.addEventListener('pointerdown', (e) => {
+  if (!document.getElementById('up').contains(e.target)) openUpMenu(false);
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openUpMenu(false); });
+
 function fitCamera(box) {
+  lastBox = box;
   if (box.isEmpty()) return;
   // Rotate around the AABB centre and frame the box tightly: project all 8
   // corners onto the view axes and pull the camera to the closest distance that
@@ -288,8 +366,9 @@ function fitCamera(box) {
   const c = box.getCenter(new THREE.Vector3());
   controls.target.copy(c);
 
-  const forward = new THREE.Vector3(1, 0.8, 1).normalize();   // target → camera
-  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), forward).normalize();
+  const { up: worldUp, forward: dir } = UP[upAxis];
+  const forward = dir.clone().normalize();   // target → camera
+  const right = new THREE.Vector3().crossVectors(worldUp, forward).normalize();
   const up = new THREE.Vector3().crossVectors(forward, right).normalize();
   const tanV = Math.tan((camera.fov * Math.PI / 180) / 2);
   const tanH = tanV * camera.aspect;
@@ -558,8 +637,11 @@ function showHeader(h) {
 }
 
 // ---- load ----
-async function loadBytes(bytes) {
+async function loadBytes(bytes, up = 'y') {
   const out = JSON.parse(load_step(bytes));
+  const upEl = document.getElementById('up');
+  upEl.hidden = true;
+  openUpMenu(false);
   showHeader(out.header || {});
   showReport(out.report, out.warnings || []);
   showUnits(out.units || []);
@@ -573,8 +655,9 @@ async function loadBytes(bytes) {
   }
   GEOM = out.geom || {};
   HLMAP = out.hl || {};
-  const box = buildObjects(GEOM);
-  fitCamera(box);
+  lastBox = buildObjects(GEOM);
+  setUp(up);
+  upEl.hidden = false;
   tree.appendChild(buildTree(out.tree || []));
   document.getElementById('drop').style.display = 'none';
 }
@@ -601,7 +684,7 @@ dz.addEventListener('drop', (e) => {
 // The STEP data is never embedded in this HTML; instead a URL query param points
 // at an external file (relative to the page or absolute) that is fetched on load.
 // Requires the page to be served over http(s): browsers block fetch under file://.
-async function loadUrl(url) {
+async function loadUrl(url, up) {
   const fn = document.getElementById('fname');
   const drop = document.getElementById('drop');
   let name = url;
@@ -611,7 +694,7 @@ async function loadUrl(url) {
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    await loadBytes(new Uint8Array(await resp.arrayBuffer()));
+    await loadBytes(new Uint8Array(await resp.arrayBuffer()), up);
   } catch (e) {
     fn.textContent = 'No file loaded';
     drop.textContent = 'Drop a STEP file here';
@@ -662,7 +745,7 @@ function sweepHandoffs() {
   }
 }
 
-async function loadHandoff(id) {
+async function loadHandoff(id, up) {
   let entry = null, failure = null;
   try { entry = takeHandoff(id); } catch (e) { failure = e; }
   if (!entry || typeof entry.text !== 'string') {
@@ -675,14 +758,14 @@ async function loadHandoff(id) {
   const fn = document.getElementById('fname');
   const name = typeof entry.name === 'string' && entry.name ? entry.name : 'handed-over.step';
   fn.textContent = name; fn.title = name;
-  await loadBytes(new TextEncoder().encode(entry.text));
+  await loadBytes(new TextEncoder().encode(entry.text), up);
 }
 
 const params = new URLSearchParams(location.search);
 const fromParam = params.get('from');
 const fileParam = params.get('file');
-if (fromParam) loadHandoff(fromParam);
-else if (fileParam) loadUrl(fileParam);
+if (fromParam) loadHandoff(fromParam, upParam);
+else if (fileParam) loadUrl(fileParam, upParam);
 // After the hand-over is taken (synchronously, before loadHandoff's first await), so a
 // slow load never sweeps the entry it came for.
 try { sweepHandoffs(); } catch (_) {}

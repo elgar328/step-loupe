@@ -18,6 +18,11 @@ step-io's reading API.
 Point `?file=<url>` at any STEP file (its host must allow CORS), or use the
 **Open STEP file** button / drag-and-drop.
 
+STEP records no "up" direction: Y-up CADs (SolidWorks, Inventor, Creo) and Z-up ones
+(CATIA, NX, Onshape, FreeCAD) write the same kind of file. The view opens Y-up; switch
+with the **Y↑** button in its corner, or open with `?up=z` (e.g.
+`?file=part.step&up=z`).
+
 ## Build
 
 Requires Rust with [wasm-pack](https://rustwasm.github.io/wasm-pack/), plus Python 3.
