@@ -165,9 +165,9 @@ dependencies = [
 
 [[package]]
 name = "step-io"
-version = "0.2.3"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e10852bfdb6e5868d2a4aed72aed9def5c0cbee2dca63a83b093f50f6c26c25"
+checksum = "749d04bbe46d889fd83b7f6676786f2ebea0654c1e0503c242e774027c2bb893"
 dependencies = [
  "logos",
 ]
