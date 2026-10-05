@@ -619,8 +619,73 @@ async function loadUrl(url) {
       `<pre style="color:#c00">Could not load ?file= URL:\n${esc(url)}\n${esc(String(e))}</pre>`;
   }
 }
-const fileParam = new URLSearchParams(location.search).get('file');
-if (fileParam) loadUrl(fileParam);
+
+// ---- optional hand-over from ?from=<id> ----
+// A page on this same origin (nacre-playground's "Open in step-loupe") hands a STEP
+// over without a URL to fetch. The contract, owned here as its reader:
+//   - The writer stores JSON {name, text, at} (at = epoch ms) in localStorage under
+//     "step-loupe:<id>", then opens this page with ?from=<id>.
+//   - The prefix is added here, never read from the URL. This page deletes what it
+//     reads, so a bare key would let a link delete any other entry on the origin.
+//   - The first read moves the entry into this tab's sessionStorage: a reload or a
+//     duplicated tab opens it again, and closing the tab clears it.
+//   - Every load sweeps entries older than ten minutes, or unreadable ones: a tab the
+//     browser blocked, or one closed before it loaded, leaves its entry behind.
+// Only pages on this origin share the storage, so the offline bundle and pages on other
+// hosts cannot hand anything over.
+const HANDOFF = 'step-loupe:';
+const HANDOFF_TTL_MS = 10 * 60 * 1000;
+
+function takeHandoff(id) {
+  const key = HANDOFF + id;
+  const kept = sessionStorage.getItem(key);
+  if (kept !== null) return JSON.parse(kept);
+  const raw = localStorage.getItem(key);
+  if (raw === null) return null;
+  localStorage.removeItem(key);
+  // Too big for this tab's storage: this load still has it, a reload will not.
+  try { sessionStorage.setItem(key, raw); } catch (_) {}
+  return JSON.parse(raw);
+}
+
+function sweepHandoffs() {
+  const now = Date.now();
+  const keys = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(HANDOFF)) keys.push(key);
+  }
+  for (const key of keys) {
+    let at = NaN;
+    try { at = JSON.parse(localStorage.getItem(key)).at; } catch (_) {}
+    if (!(now - at < HANDOFF_TTL_MS)) localStorage.removeItem(key);
+  }
+}
+
+async function loadHandoff(id) {
+  let entry = null, failure = null;
+  try { entry = takeHandoff(id); } catch (e) { failure = e; }
+  if (!entry || typeof entry.text !== 'string') {
+    const why = failure ? String(failure)
+      : 'nothing was handed over under this key — open it again from the app';
+    document.getElementById('tree').innerHTML =
+      `<pre style="color:#c00">Could not load ?from= hand-over:\n${esc(id)}\n${esc(why)}</pre>`;
+    return;
+  }
+  const fn = document.getElementById('fname');
+  const name = typeof entry.name === 'string' && entry.name ? entry.name : 'handed-over.step';
+  fn.textContent = name; fn.title = name;
+  await loadBytes(new TextEncoder().encode(entry.text));
+}
+
+const params = new URLSearchParams(location.search);
+const fromParam = params.get('from');
+const fileParam = params.get('file');
+if (fromParam) loadHandoff(fromParam);
+else if (fileParam) loadUrl(fileParam);
+// After the hand-over is taken (synchronously, before loadHandoff's first await), so a
+// slow load never sweeps the entry it came for.
+try { sweepHandoffs(); } catch (_) {}
 </script>
 </body>
 </html>

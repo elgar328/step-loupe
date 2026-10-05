@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Open a STEP file handed over by
+  [nacre-playground](https://github.com/elgar328/nacre-playground): its
+  **Open in step-loupe** button shows the part here without a download.
+
 ### Changed
 
 - Bump `step-io` to 0.2.5.
