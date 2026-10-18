@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drops from 2.1 s to 0.1 s, and the tab keeps about 400 MB less memory
   afterwards. A read that fails, even by a crash inside the reader, now shows
   its error, and opening another file meanwhile cancels the read.
+- Read the file piece by piece instead of copying all of it in first, so a
+  read needs about the file's size less memory: on the same assembly the
+  reader peaks at 331 MB instead of 436 MB, and the tab keeps about 100 MB
+  less afterwards. A file that cannot be read, such as one deleted or changed
+  since it was picked, now shows an error instead of nothing.
 - The build now uses `wasm-pack build --target no-modules`.
 
 ## [0.1.3] - 2026-10-06

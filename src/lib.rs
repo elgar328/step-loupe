@@ -1,6 +1,6 @@
-//! WASM glue for step-loupe (the step-io STEP viewer): `load_step(bytes)` reads a STEP
-//! file, walks the scene, and returns a JSON bundle (report, header, tree,
-//! geometry) that the HTML/three.js front-end renders.
+//! WASM glue for step-loupe (the step-io STEP viewer): `load_step(source)` reads a STEP
+//! file piece by piece from a JS source, walks the scene, and returns a JSON bundle
+//! (report, header, tree, geometry) that the HTML/three.js front-end renders.
 
 use std::collections::{HashMap, HashSet};
 
@@ -113,13 +113,37 @@ struct Output {
 // ---------- entry point ----------
 
 #[wasm_bindgen]
-pub fn load_step(bytes: &[u8]) -> String {
-    let (model, rep) = match step_io::read(bytes) {
+extern "C" {
+    /// Where the file comes from: `readInto(buf)` fills the front of `buf` with
+    /// the next bytes and returns how many, 0 at the end. It throws a string
+    /// when reading fails.
+    pub type Source;
+    #[wasm_bindgen(method, catch, js_name = readInto)]
+    fn read_into(this: &Source, buf: &mut [u8]) -> Result<usize, JsValue>;
+}
+
+struct SourceReader<'a>(&'a Source);
+
+impl std::io::Read for SourceReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0
+            .read_into(buf)
+            .map_err(|e| std::io::Error::other(e.as_string().unwrap_or_else(|| format!("{e:?}"))))
+    }
+}
+
+#[wasm_bindgen]
+pub fn load_step(source: &Source) -> String {
+    let (model, rep) = match step_io::read(SourceReader(source)) {
         Ok(v) => v,
         Err(e) => {
+            let error = match e {
+                step_io::Error::Io { message, .. } => format!("could not read the file: {message}"),
+                e => format!("parse failed: {e}"),
+            };
             return json(&Output {
                 ok: false,
-                error: Some(format!("parse failed: {e}")),
+                error: Some(error),
                 header: Header::default(),
                 report: None,
                 units: vec![],
