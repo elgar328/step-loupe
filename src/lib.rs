@@ -527,7 +527,7 @@ impl Builder {
         if !face.is_visible() {
             fmeta.push(kv("visible", "false"));
         }
-        fmeta.push(kv("same sense", &face.same_sense().to_string()));
+        fmeta.push(kv("orientation", &format!("{:?}", face.orientation())));
         let mut bounds = Vec::new();
         let mut face_edge_ids: Vec<u32> = Vec::new();
         for bound in face.bounds() {
