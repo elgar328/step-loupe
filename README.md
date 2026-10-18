@@ -28,7 +28,7 @@ with the **Y↑** button in its corner, or open with `?up=z` (e.g.
 Requires Rust with [wasm-pack](https://rustwasm.github.io/wasm-pack/), plus Python 3.
 
 ```sh
-wasm-pack build --target web --release
+wasm-pack build --target no-modules --release
 python3 scripts/build_single.py   # inlines the wasm glue → step-loupe.html
 ```
 

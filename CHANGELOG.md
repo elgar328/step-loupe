@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   edges, 20,000 vertices) the view redraws at the display's 60 fps instead of
   11 fps, selecting a solid shows in 10 ms instead of 170 ms, and the page
   holds 63 MB of JavaScript heap instead of 269 MB.
+- Read the file in a background thread (a Web Worker, one per file), so the
+  page no longer freezes while a large file opens, and the memory the read
+  took is returned once it is done. On the same assembly the longest stall
+  drops from 2.1 s to 0.1 s, and the tab keeps about 400 MB less memory
+  afterwards. A read that fails, even by a crash inside the reader, now shows
+  its error, and opening another file meanwhile cancels the read.
+- The build now uses `wasm-pack build --target no-modules`.
 
 ## [0.1.3] - 2026-10-06
 

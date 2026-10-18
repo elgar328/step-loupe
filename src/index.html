@@ -228,9 +228,55 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/components/button/button.js';
-import init, { load_step } from './pkg/step_loupe.js';
 
-await init();
+// ---- reader (step-io in wasm, in a Worker) ----
+// The wasm-bindgen glue (no-modules build) and the wasm, from ./pkg; the
+// single-file bundle inlines both in place of these two lines.
+const glueSrc = await (await fetch('./pkg/step_loupe.js')).text();
+const wasmBytes = new Uint8Array(await (await fetch('./pkg/step_loupe_bg.wasm')).arrayBuffer());
+// Compiled once; each read instantiates it in a Worker of its own, ended when
+// the read answers, so the memory the read took goes back with it. A classic
+// Worker: a module Worker from a blob: URL is refused when the page is opened
+// from file:// (the offline bundle).
+const wasmModule = await WebAssembly.compile(wasmBytes);
+const readerUrl = URL.createObjectURL(new Blob([glueSrc, `
+self.onmessage = (e) => {
+  try {
+    wasm_bindgen.initSync({ module: e.data.module });
+    self.postMessage({ json: wasm_bindgen.load_step(e.data.bytes) });
+  } catch (err) {
+    self.postMessage({ error: String(err) });
+  }
+};`], { type: 'text/javascript' }));
+
+// What readStep resolves to when a newer read took its place.
+const CANCELLED = Symbol('cancelled');
+let reading = null; // the running read: { worker, resolve }
+
+// Read STEP bytes into the viewer JSON. Starting a read cancels the one still
+// running. `bytes` is handed over to the Worker, not copied.
+function readStep(bytes) {
+  if (reading) {
+    reading.worker.terminate();
+    reading.resolve(CANCELLED);
+  }
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(readerUrl);
+    const me = { worker, resolve };
+    reading = me;
+    const settle = (fn) => {
+      if (reading !== me) return; // cancelled: whatever it sends is stale
+      reading = null;
+      worker.terminate();
+      fn();
+    };
+    worker.onmessage = (e) => settle(() =>
+      e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.json));
+    worker.onerror = (e) => { e.preventDefault(); settle(() => reject(new Error(e.message || 'the reader stopped'))); };
+    worker.onmessageerror = () => settle(() => reject(new Error('the read result could not be received')));
+    worker.postMessage({ module: wasmModule, bytes }, [bytes.buffer]);
+  });
+}
 
 // ---- three.js scene ----
 const view = document.getElementById('view');
@@ -750,7 +796,18 @@ function showHeader(h) {
 
 // ---- load ----
 async function loadBytes(bytes, up = 'y') {
-  const out = JSON.parse(load_step(bytes));
+  // The last file stays on screen while this one is read.
+  const drop = document.getElementById('drop');
+  drop.textContent = 'Reading …';
+  drop.style.display = '';
+  let out;
+  try {
+    const json = await readStep(bytes);
+    if (json === CANCELLED) return; // a newer file took over
+    out = JSON.parse(json);
+  } catch (e) {
+    out = { ok: false, error: `read failed: ${e.message}` };
+  }
   const upEl = document.getElementById('up');
   upEl.hidden = true;
   openUpMenu(false);
@@ -763,6 +820,7 @@ async function loadBytes(bytes, up = 'y') {
   clearScene();
   if (!out.ok) {
     tree.innerHTML = `<pre style="color:#c00">${esc(out.error || 'read failed')}</pre>`;
+    drop.textContent = 'Drop a STEP file here';
     return;
   }
   HLMAP = out.hl || {};
@@ -770,7 +828,7 @@ async function loadBytes(bytes, up = 'y') {
   setUp(up);
   upEl.hidden = false;
   tree.appendChild(buildTree(out.tree || []));
-  document.getElementById('drop').style.display = 'none';
+  drop.style.display = 'none';
 }
 
 // ---- file input + drag/drop (both paths sync the displayed filename) ----

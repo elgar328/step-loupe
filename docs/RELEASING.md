@@ -26,7 +26,7 @@ Remove the `-dev` suffix from `version` in `Cargo.toml` (`X.Y.Z-dev` → `X.Y.Z`
 ```sh
 cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
-wasm-pack build --target web --release
+wasm-pack build --target no-modules --release
 ```
 
 ### 4. Build the single-file bundle
