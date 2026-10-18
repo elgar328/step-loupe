@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Draw the edges and the vertices as a few shared objects instead of one
+  object each, so a large file turns smoothly. On a 110 MB assembly (31,000
+  edges, 20,000 vertices) the view redraws at the display's 60 fps instead of
+  11 fps, selecting a solid shows in 10 ms instead of 170 ms, and the page
+  holds 63 MB of JavaScript heap instead of 269 MB.
+
 ## [0.1.3] - 2026-10-06
 
 ### Added

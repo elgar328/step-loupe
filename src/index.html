@@ -224,8 +224,8 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { Line2 } from 'three/addons/lines/Line2.js';
-import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/components/button/button.js';
 import init, { load_step } from './pkg/step_loupe.js';
@@ -259,7 +259,9 @@ window.addEventListener('resize', resize);
 
 // ---- materials ----
 const M = {
-  faint: new LineMaterial({ color: 0xbbbbbb, linewidth: 2 }),
+  // Pushed back a little so a highlighted copy drawn over an edge, at the same
+  // depth, always wins; vertices and highlights keep their true depth.
+  faint: new LineMaterial({ color: 0xbbbbbb, linewidth: 2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
   hiLine: new LineMaterial({ color: 0x00ffff, linewidth: 5 }),
   fallback: new LineMaterial({ color: 0xff4444, linewidth: 3, dashed: true, dashSize: 0.5, gapSize: 0.3 }),
   pt: new THREE.PointsMaterial({ color: 0x888888, size: 4, sizeAttenuation: false }),
@@ -268,49 +270,117 @@ const M = {
   hiMesh: new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6, side: THREE.DoubleSide }),
 };
 resize(); // now that M exists, size renderer + line-material resolution
+// Opaque draw order, the one three.js gave one object per edge/vertex (it orders
+// ties by material): edges, highlighted edges, fallback edges, vertices,
+// highlighted vertices — vertex dots stay visible on highlighted edges.
+const ORDER = { faint: 0, hiLine: 1, fallback: 2, pt: 3, hiPt: 4 };
 
 // ---- state ----
-let GEOM = {};          // id -> geom json
 let HLMAP = {};         // node id -> extra render ids to highlight (features/PMI)
-let objById = new Map();  // id -> { obj, kind, base, hi, fallback }
+// Render id -> where it is drawn. All edges share one line object and all
+// vertices one points object, so a frame is a few draw calls however large the
+// file: an edge is a run of segments ({ start, count }, in segments), a vertex
+// one point ({ start }), a mesh its own object ({ obj }).
+let ranges = new Map();
+let edgeSegs = new Float32Array(0);  // merged edge segments, 6 floats each
+let vertexPts = new Float32Array(0); // merged vertex points, 3 floats each
+// The highlight: copies of the selected edges/vertices drawn over the base,
+// and the meshes switched to the highlight material.
+let hiNode = null, hiObjs = [], hiMeshes = [];
 
 function clearScene() {
   scene.remove(root);
   root.traverse(o => { o.geometry?.dispose(); });
   root = new THREE.Group(); scene.add(root);
-  objById.clear();
+  ranges.clear();
+  edgeSegs = new Float32Array(0); vertexPts = new Float32Array(0);
+  hiNode = null; hiObjs = []; hiMeshes = [];
+}
+
+// A polyline's points as segment pairs, written into `out` from segment `at`.
+function putSegments(out, at, d) {
+  const n = d.length / 3 - 1;
+  for (let i = 0; i < n; i++) {
+    const o = (at + i) * 6, k = i * 3;
+    for (let c = 0; c < 6; c++) out[o + c] = d[k + c];
+  }
 }
 
 function buildObjects(geom) {
   const box = new THREE.Box3();
-  for (const [id, g] of Object.entries(geom)) {
-    let obj, base, hi;
+  const segCount = d => Math.max(0, d.length / 3 - 1);
+  let nSeg = 0, nFall = 0, nPt = 0;
+  for (const g of Object.values(geom)) {
+    if (g.t === 'line') { if (g.fallback) nFall += segCount(g.d); else nSeg += segCount(g.d); }
+    else if (g.t === 'point') nPt++;
+  }
+  const segs = new Float32Array(nSeg * 6), fall = new Float32Array(nFall * 6);
+  const fallDist = new Float32Array(nFall * 2), pts = new Float32Array(nPt * 3);
+  let s = 0, f = 0, p = 0;
+  for (const [key, g] of Object.entries(geom)) {
+    const id = Number(key);
     if (g.t === 'line') {
-      const geo = new LineGeometry();
-      geo.setPositions(g.d);
+      const n = segCount(g.d);
       if (g.fallback) {
-        obj = new Line2(geo, M.fallback); obj.computeLineDistances();
-        base = M.fallback; hi = M.fallback;
+        // Dash distances restart at each edge, as LineSegments2.computeLineDistances
+        // does for one edge.
+        putSegments(fall, f, g.d);
+        for (let i = 0; i < n; i++) {
+          const o = (f + i) * 6, j = (f + i) * 2;
+          const dx = fall[o + 3] - fall[o], dy = fall[o + 4] - fall[o + 1], dz = fall[o + 5] - fall[o + 2];
+          fallDist[j] = i === 0 ? 0 : fallDist[j - 1];
+          fallDist[j + 1] = fallDist[j] + Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        ranges.set(id, { type: 'line', fallback: true });
+        f += n;
       } else {
-        obj = new Line2(geo, M.faint); base = M.faint; hi = M.hiLine;
+        putSegments(segs, s, g.d);
+        ranges.set(id, { type: 'line', start: s, count: n });
+        s += n;
       }
     } else if (g.t === 'point') {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(g.d, 3));
-      obj = new THREE.Points(geo, M.pt); base = M.pt; hi = M.hiPt;
+      pts[p * 3] = g.d[0]; pts[p * 3 + 1] = g.d[1]; pts[p * 3 + 2] = g.d[2];
+      ranges.set(id, { type: 'point', start: p });
+      p++;
     } else if (g.t === 'mesh') {
+      // Meshes stay one object each: they are see-through, and three.js sorts
+      // see-through objects far to near, which a merged mesh would lose.
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(g.d, 3));
       if (g.tri) geo.setIndex(g.tri);
       geo.computeVertexNormals();
-      obj = new THREE.Mesh(geo, M.mesh); base = M.mesh; hi = M.hiMesh;
+      const obj = new THREE.Mesh(geo, M.mesh);
+      geo.computeBoundingBox();
+      box.union(geo.boundingBox);
+      root.add(obj);
+      ranges.set(id, { type: 'mesh', obj });
     }
-    if (!obj) continue;
-    obj.geometry.computeBoundingBox();
-    if (obj.geometry.boundingBox) box.union(obj.geometry.boundingBox);
-    root.add(obj);
-    objById.set(Number(id), { obj, base, hi, fallback: !!g.fallback, type: g.t });
   }
+  const add = (obj, order) => {
+    obj.renderOrder = order;
+    obj.geometry.computeBoundingBox();
+    box.union(obj.geometry.boundingBox);
+    root.add(obj);
+  };
+  if (nSeg) {
+    const geo = new LineSegmentsGeometry();
+    geo.setPositions(segs);
+    add(new LineSegments2(geo, M.faint), ORDER.faint);
+  }
+  if (nFall) {
+    const geo = new LineSegmentsGeometry();
+    geo.setPositions(fall);
+    const dist = new THREE.InstancedInterleavedBuffer(fallDist, 2, 1);
+    geo.setAttribute('instanceDistanceStart', new THREE.InterleavedBufferAttribute(dist, 1, 0));
+    geo.setAttribute('instanceDistanceEnd', new THREE.InterleavedBufferAttribute(dist, 1, 1));
+    add(new LineSegments2(geo, M.fallback), ORDER.fallback);
+  }
+  if (nPt) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    add(new THREE.Points(geo, M.pt), ORDER.pt);
+  }
+  edgeSegs = segs; vertexPts = pts;
   return box;
 }
 
@@ -390,32 +460,74 @@ function fitCamera(box) {
 
 // gather geom ids inside a tree node subtree
 function collectIds(node, out) {
-  if (objById.has(node.id)) out.add(node.id);
+  if (ranges.has(node.id)) out.add(node.id);
   for (const c of (node.children || [])) collectIds(c, out);
 }
 
+// Copy the given runs of `src` (in units of `size` floats) into one array,
+// merging runs that sit next to each other into one copy.
+function gatherRuns(src, runs, size) {
+  runs.sort((a, b) => a[0] - b[0]);
+  let total = 0;
+  for (const [, n] of runs) total += n;
+  const out = new Float32Array(total * size);
+  let at = 0;
+  for (let i = 0; i < runs.length;) {
+    let [start, n] = runs[i++];
+    while (i < runs.length && runs[i][0] === start + n) n += runs[i++][1];
+    out.set(src.subarray(start * size, (start + n) * size), at);
+    at += n * size;
+  }
+  return out;
+}
+
 function selectNode(node) {
+  if (node === hiNode) return;
+  clearHighlight();
+  hiNode = node;
   const ids = new Set(); collectIds(node, ids);
   // Features/PMI reference geometry indirectly; HLMAP lists the render ids to
   // light up (edge lines / vertex points of the referenced faces & edges).
   const hl = HLMAP[node.id] || [];
   hl.forEach(i => ids.add(i));
   const hlSet = new Set(hl);
-  for (const [id, rec] of objById) {
-    if (rec.fallback) continue;            // fallback keeps its red dashed look
-    // Points highlight only when the vertex itself is the selected node or is
-    // referenced via HLMAP; selecting a solid/face lights up its edges, not
-    // their endpoint points.
-    const on = rec.type === 'point' ? (id === node.id || hlSet.has(id)) : ids.has(id);
-    rec.obj.material = on ? rec.hi : rec.base;
+  const segRuns = [], ptRuns = [];
+  for (const id of ids) {
+    const r = ranges.get(id);
+    if (!r || r.fallback) continue;        // fallback keeps its red dashed look
+    if (r.type === 'line') {
+      if (r.count) segRuns.push([r.start, r.count]);
+    } else if (r.type === 'point') {
+      // Points highlight only when the vertex itself is the selected node or is
+      // referenced via HLMAP; selecting a solid/face lights up its edges, not
+      // their endpoint points.
+      if (id === node.id || hlSet.has(id)) ptRuns.push([r.start, 1]);
+    } else {
+      r.obj.material = M.hiMesh;
+      hiMeshes.push(r.obj);
+    }
   }
+  if (segRuns.length) {
+    const geo = new LineSegmentsGeometry();
+    geo.setPositions(gatherRuns(edgeSegs, segRuns, 6));
+    const obj = new LineSegments2(geo, M.hiLine);
+    obj.renderOrder = ORDER.hiLine;
+    hiObjs.push(obj);
+  }
+  if (ptRuns.length) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(gatherRuns(vertexPts, ptRuns, 3), 3));
+    const obj = new THREE.Points(geo, M.hiPt);
+    obj.renderOrder = ORDER.hiPt;
+    hiObjs.push(obj);
+  }
+  for (const o of hiObjs) root.add(o);
 }
 
 function clearHighlight() {
-  for (const [, rec] of objById) {
-    if (rec.fallback) continue;
-    rec.obj.material = rec.base;
-  }
+  for (const o of hiObjs) { root.remove(o); o.geometry.dispose(); }
+  for (const m of hiMeshes) m.material = M.mesh;
+  hiNode = null; hiObjs = []; hiMeshes = [];
 }
 
 // ---- tree build (native <details>/<summary>) ----
@@ -653,9 +765,8 @@ async function loadBytes(bytes, up = 'y') {
     tree.innerHTML = `<pre style="color:#c00">${esc(out.error || 'read failed')}</pre>`;
     return;
   }
-  GEOM = out.geom || {};
   HLMAP = out.hl || {};
-  lastBox = buildObjects(GEOM);
+  lastBox = buildObjects(out.geom || {});
   setUp(up);
   upEl.hidden = false;
   tree.appendChild(buildTree(out.tree || []));
