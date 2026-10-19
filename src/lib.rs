@@ -1,6 +1,7 @@
-//! WASM glue for step-loupe (the step-io STEP viewer): `load_step(source)` reads a STEP
-//! file piece by piece from a JS source, walks the scene, and returns a JSON bundle
-//! (report, header, tree, geometry) that the HTML/three.js front-end renders.
+//! WASM glue for step-loupe (the step-io STEP viewer): `load_step(source, sink)` reads a
+//! STEP file piece by piece from a JS source, walks the scene, and hands the result to a
+//! JS sink as it is made: a JSON bundle (report, header, tree) in pieces, and the
+//! rendered geometry in binary runs. The HTML/three.js front-end renders both.
 
 use std::collections::{HashMap, HashSet};
 
@@ -43,7 +44,7 @@ fn apply(m: &Mat, p: [f64; 3]) -> [f64; 3] {
 
 // ---------- JSON shapes ----------
 
-#[derive(Serialize, Default)]
+#[derive(Serialize)]
 struct Header {
     file_name: String,
     time_stamp: String,
@@ -68,9 +69,10 @@ struct Report {
     norm: Vec<String>,
 }
 
-/// One tree node. `children` refer to nodes by id (`>= 0`) and to groups by
-/// `-1 - index` into `Output::groups`, so a node under several parents (an edge
-/// shared by two faces) is listed once.
+/// One tree node, written out as soon as it is made: children come before their
+/// parent, and the page places each node by its `id`. `children` refer to nodes
+/// by id (`>= 0`) and to groups by `-1 - index` into the bundle's `groups`, so a
+/// node under several parents (an edge shared by two faces) is listed once.
 #[derive(Serialize)]
 struct Node {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -83,42 +85,7 @@ struct Node {
     children: Vec<i64>,
 }
 
-/// Renderable geometry for a node id. `t`: "line" (polyline pts), "point"
-/// ([x,y,z]), or "mesh" (pts + `tri` indices).
-#[derive(Serialize)]
-struct Geom {
-    t: &'static str,
-    d: Vec<f32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tri: Vec<u32>,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    fallback: bool,
-}
-
-#[derive(Serialize)]
-struct Output {
-    ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
-    header: Header,
-    report: Option<Report>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    units: Vec<[String; 2]>,
-    /// The top-level groups, as child references.
-    tree: Vec<i64>,
-    /// Every node with an id, at that index.
-    nodes: Vec<Option<Node>>,
-    groups: Vec<Node>,
-    geom: HashMap<u32, Geom>,
-    /// Node id -> rendered geometry ids to highlight when that node is selected.
-    /// Only carries entries for nodes without their own geometry subtree
-    /// (features and PMI, which reference geometry indirectly).
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    hl: HashMap<u32, Vec<u32>>,
-    warnings: Vec<String>,
-}
-
-// ---------- entry point ----------
+// ---------- output ----------
 
 #[wasm_bindgen]
 extern "C" {
@@ -128,7 +95,122 @@ extern "C" {
     pub type Source;
     #[wasm_bindgen(method, catch, js_name = readInto)]
     fn read_into(this: &Source, buf: &mut [u8]) -> Result<usize, JsValue>;
+
+    /// Where the result goes, as it is made. `text(bytes)` takes the next piece
+    /// of the JSON bundle, valid UTF-8 by itself; `geometry(rows, d, tri)` the
+    /// next run of rendered geometry (see `Geometry`). Both get views into wasm
+    /// memory, valid only during the call.
+    pub type Sink;
+    #[wasm_bindgen(method)]
+    fn text(this: &Sink, bytes: &[u8]);
+    #[wasm_bindgen(method)]
+    fn geometry(this: &Sink, rows: &[u32], d: &[f32], tri: &[u32]);
 }
+
+/// Bytes of JSON gathered before they go to the sink.
+const TEXT_PIECE: usize = 64 << 10;
+
+/// The JSON bundle, sent to the sink in pieces. A piece ends only after a whole
+/// value, so no character is split between two pieces.
+struct Json<'a> {
+    sink: &'a Sink,
+    buf: Vec<u8>,
+}
+
+impl<'a> Json<'a> {
+    fn new(sink: &'a Sink) -> Self {
+        Json {
+            sink,
+            buf: Vec::new(),
+        }
+    }
+
+    fn raw(&mut self, s: &str) {
+        self.buf.extend_from_slice(s.as_bytes());
+    }
+
+    fn value<T: Serialize + ?Sized>(&mut self, v: &T) {
+        serde_json::to_writer(&mut self.buf, v).expect("the bundle's values serialize");
+        if self.buf.len() >= TEXT_PIECE {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.buf.is_empty() {
+            self.sink.text(&self.buf);
+            self.buf.clear();
+        }
+    }
+}
+
+// Kinds of rendered geometry, in `Geometry` rows.
+const LINE: u32 = 0;
+/// A straight segment between an edge's vertices, standing in for a curve that
+/// could not be sampled.
+const FALLBACK: u32 = 1;
+const POINT: u32 = 2;
+const MESH: u32 = 3;
+
+/// Floats and indices gathered before they go to the sink.
+const GEOMETRY_RUN: usize = 1 << 18;
+
+/// Rendered geometry, sent to the sink in runs, in node id order. Each item is
+/// four numbers in `rows` (node id, kind, its floats in `d`, its indices in
+/// `tri`) and its values: x,y,z points in `d` (a polyline, one point, or mesh
+/// vertices) and mesh triangle indices in `tri`. An item is never split
+/// between runs.
+struct Geometry<'a> {
+    sink: &'a Sink,
+    rows: Vec<u32>,
+    d: Vec<f32>,
+    tri: Vec<u32>,
+}
+
+impl<'a> Geometry<'a> {
+    fn new(sink: &'a Sink) -> Self {
+        Geometry {
+            sink,
+            rows: Vec::new(),
+            d: Vec::new(),
+            tri: Vec::new(),
+        }
+    }
+
+    fn push(
+        &mut self,
+        id: u32,
+        kind: u32,
+        d: impl IntoIterator<Item = f32>,
+        tri: impl IntoIterator<Item = u32>,
+    ) {
+        let (d0, tri0) = (self.d.len(), self.tri.len());
+        // A non-finite coordinate goes in as 0, so it cannot spoil the view's bounds.
+        self.d
+            .extend(d.into_iter().map(|x| if x.is_finite() { x } else { 0.0 }));
+        self.tri.extend(tri);
+        self.rows.extend([
+            id,
+            kind,
+            (self.d.len() - d0) as u32,
+            (self.tri.len() - tri0) as u32,
+        ]);
+        if self.d.len() + self.tri.len() >= GEOMETRY_RUN {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if !self.rows.is_empty() {
+            self.sink.geometry(&self.rows, &self.d, &self.tri);
+            self.rows.clear();
+            self.d.clear();
+            self.tri.clear();
+        }
+    }
+}
+
+// ---------- entry point ----------
 
 struct SourceReader<'a>(&'a Source);
 
@@ -141,7 +223,7 @@ impl std::io::Read for SourceReader<'_> {
 }
 
 #[wasm_bindgen]
-pub fn load_step(source: &Source) -> String {
+pub fn load_step(source: &Source, sink: &Sink) {
     let (model, rep) = match step_io::read(SourceReader(source)) {
         Ok(v) => v,
         Err(e) => {
@@ -149,19 +231,10 @@ pub fn load_step(source: &Source) -> String {
                 step_io::Error::Io { message, .. } => format!("could not read the file: {message}"),
                 e => format!("parse failed: {e}"),
             };
-            return json(&Output {
-                ok: false,
-                error: Some(error),
-                header: Header::default(),
-                report: None,
-                units: vec![],
-                tree: vec![],
-                nodes: vec![],
-                groups: vec![],
-                geom: HashMap::new(),
-                hl: HashMap::new(),
-                warnings: vec![],
-            });
+            let mut json = Json::new(sink);
+            json.value(&serde_json::json!({ "ok": false, "error": error }));
+            json.flush();
+            return;
         }
     };
 
@@ -180,7 +253,13 @@ pub fn load_step(source: &Source) -> String {
     };
 
     let scene = model.scene();
-    let mut b = Builder::default();
+    let mut b = Builder::new(sink);
+    b.json.raw(r#"{"ok":true,"header":"#);
+    b.json.value(&header);
+    b.json.raw(r#","report":"#);
+    b.json.value(&report);
+    // The nodes follow, each as it is made.
+    b.json.raw(r#","nodes":["#);
     let mut roots = Vec::new();
 
     // Model tree: assembly hierarchy (root_definitions -> occurrences), with
@@ -346,67 +425,72 @@ pub fn load_step(source: &Source) -> String {
     for g in scene.all_mesh_groups() {
         for m in g.meshes() {
             let id = b.next();
-            let pts = m.points();
             let tris = m.triangles();
-            let mut d = Vec::with_capacity(pts.len() * 3);
-            for p in &pts {
-                d.extend([p[0] as f32, p[1] as f32, p[2] as f32]);
-            }
-            let mut tri = Vec::with_capacity(tris.len() * 3);
-            for t in &tris {
-                tri.extend([t[0] as u32, t[1] as u32, t[2] as u32]);
-            }
-            b.geom.insert(
+            b.geom.push(
                 id,
-                Geom {
-                    t: "mesh",
-                    d,
-                    tri,
-                    fallback: false,
-                },
+                MESH,
+                m.points().into_iter().flat_map(|p| p.map(|c| c as f32)),
+                tris.iter().flat_map(|t| t.map(|i| i as u32)),
             );
             meshes.push(b.leaf(id, "Mesh", format!("Mesh ({} tris)", tris.len()), vec![]));
         }
     }
     roots.push(b.group("Meshes", meshes));
 
-    json(&Output {
-        ok: true,
-        error: None,
-        header,
-        report: Some(report),
-        units,
-        tree: roots,
-        nodes: b.nodes,
-        groups: b.groups,
-        geom: b.geom,
-        hl: out_hl,
-        warnings: scene.warnings(),
-    })
+    b.geom.flush();
+    let json = &mut b.json;
+    json.raw(r#"],"tree":"#);
+    json.value(&roots);
+    json.raw(r#","groups":"#);
+    json.value(&b.groups);
+    if !units.is_empty() {
+        json.raw(r#","units":"#);
+        json.value(&units);
+    }
+    if !out_hl.is_empty() {
+        json.raw(r#","hl":"#);
+        json.value(&out_hl);
+    }
+    json.raw(r#","warnings":"#);
+    json.value(&scene.warnings());
+    json.raw("}");
+    json.flush();
 }
 
 // ---------- scene walk helpers ----------
 
-#[derive(Default)]
-struct Builder {
+struct Builder<'a> {
     next: u32,
-    geom: HashMap<u32, Geom>,
+    json: Json<'a>,
+    /// Whether a node has been written out, by id.
+    listed: Vec<bool>,
+    geom: Geometry<'a>,
     /// Geometry EntityKey -> rendered leaf ids (edge lines, vertex points) under
     /// it, accumulated across every placed instance. Lets features/PMI resolve
     /// the faces/edges they reference back to highlightable 3D objects.
     hl_ids: HashMap<EntityKey, Vec<u32>>,
-    nodes: Vec<Option<Node>>,
     groups: Vec<Node>,
 }
 
-impl Builder {
+impl<'a> Builder<'a> {
+    fn new(sink: &'a Sink) -> Self {
+        Builder {
+            next: 0,
+            json: Json::new(sink),
+            listed: Vec::new(),
+            geom: Geometry::new(sink),
+            hl_ids: HashMap::new(),
+            groups: Vec::new(),
+        }
+    }
+
     fn next(&mut self) -> u32 {
         let i = self.next;
         self.next += 1;
         i
     }
 
-    /// Store the node `id` and return it.
+    /// Write the node `id` out and return it.
     fn put(
         &mut self,
         id: u32,
@@ -415,11 +499,15 @@ impl Builder {
         meta: Vec<[String; 2]>,
         children: Vec<i64>,
     ) -> u32 {
-        let i = id as usize;
-        if self.nodes.len() <= i {
-            self.nodes.resize_with(i + 1, || None);
+        if !self.listed.is_empty() {
+            self.json.raw(",");
         }
-        self.nodes[i] = Some(Node {
+        let i = id as usize;
+        if self.listed.len() <= i {
+            self.listed.resize(i + 1, false);
+        }
+        self.listed[i] = true;
+        self.json.value(&Node {
             id: Some(id),
             kind,
             label,
@@ -445,7 +533,7 @@ impl Builder {
     }
 
     fn built(&self, id: u32) -> bool {
-        self.nodes.get(id as usize).is_some_and(Option::is_some)
+        self.listed.get(id as usize).copied().unwrap_or(false)
     }
 
     /// Id deduped within one placed-instance map; distinct instances of a shared
@@ -645,15 +733,9 @@ impl Builder {
             return eid;
         }
         self.hl_ids.entry(edge.key()).or_default().push(eid);
-        self.geom.entry(eid).or_insert_with(|| {
-            let (d, fallback) = sample_edge(edge, world);
-            Geom {
-                t: "line",
-                d,
-                tri: vec![],
-                fallback,
-            }
-        });
+        let (d, fallback) = sample_edge(edge, world);
+        self.geom
+            .push(eid, if fallback { FALLBACK } else { LINE }, d, []);
         let curve = edge.curve();
         let cname = kind_name(&format!("{:?}", curve.kind()));
         let mut meta = vec![kv("curve", &cname)];
@@ -691,15 +773,8 @@ impl Builder {
             // A feature may reference the cartesian point directly; map it to the
             // vertex's rendered point so such references still highlight.
             self.hl_ids.entry(p.key()).or_default().push(vid);
-            self.geom.entry(vid).or_insert_with(|| {
-                let c = apply(world, p.xyz());
-                Geom {
-                    t: "point",
-                    d: vec![c[0] as f32, c[1] as f32, c[2] as f32],
-                    tri: vec![],
-                    fallback: false,
-                }
-            });
+            self.geom
+                .push(vid, POINT, apply(world, p.xyz()).map(|c| c as f32), []);
             let [x, y, z] = p.xyz();
             meta.push(kv("coords", &format!("{x}, {y}, {z}")));
         }
@@ -1087,8 +1162,4 @@ fn kv(k: &str, v: &str) -> [String; 2] {
 fn rgb_hex(c: Rgb) -> String {
     let q = |x: f64| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
     format!("#{:02x}{:02x}{:02x}", q(c.red), q(c.green), q(c.blue))
-}
-
-fn json(o: &Output) -> String {
-    serde_json::to_string(o).unwrap_or_else(|e| format!("{{\"ok\":false,\"error\":\"{e}\"}}"))
 }

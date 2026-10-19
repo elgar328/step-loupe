@@ -274,7 +274,15 @@ self.onmessage = (e) => {
         }
       },
     };
-    self.postMessage({ json: wasm_bindgen.load_step(source) });
+    // The reader hands its result over as it makes it: the JSON in pieces and
+    // the geometry in runs of [rows, d, tri], each copied out of wasm memory.
+    const decoder = new TextDecoder(), text = [], geom = [];
+    const sink = {
+      text(bytes) { text.push(decoder.decode(bytes)); },
+      geometry(rows, d, tri) { geom.push([rows.slice(), d.slice(), tri.slice()]); },
+    };
+    wasm_bindgen.load_step(source, sink);
+    self.postMessage({ json: text.join(''), geom }, geom.flat().map((a) => a.buffer));
   } catch (err) {
     self.postMessage({ error: String(err) });
   }
@@ -284,9 +292,10 @@ self.onmessage = (e) => {
 const CANCELLED = Symbol('cancelled');
 let reading = null; // the running read: { worker, resolve }
 
-// Read a STEP file (a Blob) into the viewer JSON. Starting a read cancels the
-// one still running. The Worker gets the Blob itself, not a copy of its bytes,
-// except from file://, where it gets the bytes the page read.
+// Read a STEP file (a Blob) into what the viewer shows: { json, geom }, the JSON
+// bundle as text and the geometry runs. Starting a read cancels the one still
+// running. The Worker gets the Blob itself, not a copy of its bytes, except
+// from file://, where it gets the bytes the page read.
 function readStep(file) {
   if (reading) {
     reading.worker.terminate();
@@ -303,7 +312,7 @@ function readStep(file) {
       fn();
     };
     worker.onmessage = (e) => settle(() =>
-      e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.json));
+      e.data.error ? reject(new Error(e.data.error)) : resolve(e.data));
     worker.onerror = (e) => { e.preventDefault(); settle(() => reject(new Error(e.message || 'the reader stopped'))); };
     worker.onmessageerror = () => settle(() => reject(new Error('the read result could not be received')));
     if (location.protocol !== 'file:') {
@@ -317,7 +326,7 @@ function readStep(file) {
         if (reading === me) worker.postMessage({ module: wasmModule, bytes: new Uint8Array(buf) }, [buf]);
       },
       (err) => settle(() =>
-        resolve(JSON.stringify({ ok: false, error: `could not read the file: ${err}` }))),
+        resolve({ json: JSON.stringify({ ok: false, error: `could not read the file: ${err}` }), geom: [] })),
     );
   });
 }
@@ -396,25 +405,43 @@ function putSegments(out, at, d) {
   }
 }
 
+// Kinds of geometry the reader sends; a fallback is a straight segment
+// standing in for an edge whose curve could not be sampled.
+const KIND = { line: 0, fallback: 1, point: 2, mesh: 3 };
+
+// The reader's geometry comes in runs of [rows, d, tri], in node id order: each
+// item is four numbers in `rows` (node id, kind, its floats in `d`, its indices
+// in `tri`). Calls fn(id, kind, d, tri) for each item, with views of its values.
+function eachGeom(geom, fn) {
+  for (const [rows, d, tri] of geom) {
+    let at = 0, ti = 0;
+    for (let r = 0; r < rows.length; r += 4) {
+      const nd = rows[r + 2], nt = rows[r + 3];
+      fn(rows[r], rows[r + 1], d.subarray(at, at + nd), tri.subarray(ti, ti + nt));
+      at += nd; ti += nt;
+    }
+  }
+}
+
 function buildObjects(geom) {
   const box = new THREE.Box3();
   const segCount = d => Math.max(0, d.length / 3 - 1);
   let nSeg = 0, nFall = 0, nPt = 0;
-  for (const g of Object.values(geom)) {
-    if (g.t === 'line') { if (g.fallback) nFall += segCount(g.d); else nSeg += segCount(g.d); }
-    else if (g.t === 'point') nPt++;
-  }
+  eachGeom(geom, (id, kind, d) => {
+    if (kind === KIND.line) nSeg += segCount(d);
+    else if (kind === KIND.fallback) nFall += segCount(d);
+    else if (kind === KIND.point) nPt++;
+  });
   const segs = new Float32Array(nSeg * 6), fall = new Float32Array(nFall * 6);
   const fallDist = new Float32Array(nFall * 2), pts = new Float32Array(nPt * 3);
   let s = 0, f = 0, p = 0;
-  for (const [key, g] of Object.entries(geom)) {
-    const id = Number(key);
-    if (g.t === 'line') {
-      const n = segCount(g.d);
-      if (g.fallback) {
+  eachGeom(geom, (id, kind, d, tri) => {
+    if (kind === KIND.line || kind === KIND.fallback) {
+      const n = segCount(d);
+      if (kind === KIND.fallback) {
         // Dash distances restart at each edge, as LineSegments2.computeLineDistances
         // does for one edge.
-        putSegments(fall, f, g.d);
+        putSegments(fall, f, d);
         for (let i = 0; i < n; i++) {
           const o = (f + i) * 6, j = (f + i) * 2;
           const dx = fall[o + 3] - fall[o], dy = fall[o + 4] - fall[o + 1], dz = fall[o + 5] - fall[o + 2];
@@ -424,20 +451,20 @@ function buildObjects(geom) {
         ranges.set(id, { type: 'line', fallback: true });
         f += n;
       } else {
-        putSegments(segs, s, g.d);
+        putSegments(segs, s, d);
         ranges.set(id, { type: 'line', start: s, count: n });
         s += n;
       }
-    } else if (g.t === 'point') {
-      pts[p * 3] = g.d[0]; pts[p * 3 + 1] = g.d[1]; pts[p * 3 + 2] = g.d[2];
+    } else if (kind === KIND.point) {
+      pts.set(d, p * 3);
       ranges.set(id, { type: 'point', start: p });
       p++;
-    } else if (g.t === 'mesh') {
+    } else if (kind === KIND.mesh) {
       // Meshes stay one object each: they are see-through, and three.js sorts
       // see-through objects far to near, which a merged mesh would lose.
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.Float32BufferAttribute(g.d, 3));
-      if (g.tri) geo.setIndex(g.tri);
+      geo.setAttribute('position', new THREE.BufferAttribute(d, 3));
+      if (tri.length) geo.setIndex(new THREE.BufferAttribute(tri, 1));
       geo.computeVertexNormals();
       const obj = new THREE.Mesh(geo, M.mesh);
       geo.computeBoundingBox();
@@ -445,7 +472,7 @@ function buildObjects(geom) {
       root.add(obj);
       ranges.set(id, { type: 'mesh', obj });
     }
-  }
+  });
   const add = (obj, order) => {
     obj.renderOrder = order;
     obj.geometry.computeBoundingBox();
@@ -730,13 +757,14 @@ function renderNode(node, depth) {
   return row;
 }
 
-// The reader sends each node once, in a table: `children` hold node ids (>= 0)
-// and group references (-1 - index into `groups`). Put the objects in their
-// place, so a node under several parents is one shared object.
+// The reader sends each node once, children before their parent: `children`
+// hold node ids (>= 0) and group references (-1 - index into `groups`). Put the
+// objects in their place, so a node under several parents is one shared object.
 function linkTree(out) {
-  const nodes = out.nodes || [], groups = out.groups || [];
+  const list = out.nodes || [], groups = out.groups || [], nodes = [];
+  for (const n of list) nodes[n.id] = n;
   const ref = (c) => (c >= 0 ? nodes[c] : groups[-1 - c]);
-  for (const n of nodes) if (n.children) n.children = n.children.map(ref);
+  for (const n of list) if (n.children) n.children = n.children.map(ref);
   for (const g of groups) if (g.children) g.children = g.children.map(ref);
   return (out.tree || []).map(ref);
 }
@@ -855,11 +883,12 @@ async function loadBlob(blob, up = 'y') {
   const drop = document.getElementById('drop');
   drop.textContent = 'Reading …';
   drop.style.display = '';
-  let out;
+  let out, geom = [];
   try {
-    const json = await readStep(blob);
-    if (json === CANCELLED) return; // a newer file took over
-    out = JSON.parse(json);
+    const read = await readStep(blob);
+    if (read === CANCELLED) return; // a newer file took over
+    out = JSON.parse(read.json);
+    geom = read.geom;
   } catch (e) {
     out = { ok: false, error: `read failed: ${e.message}` };
   }
@@ -879,7 +908,7 @@ async function loadBlob(blob, up = 'y') {
     return;
   }
   HLMAP = out.hl || {};
-  lastBox = buildObjects(out.geom || {});
+  lastBox = buildObjects(geom);
   setUp(up);
   upEl.hidden = false;
   tree.appendChild(buildTree(linkTree(out)));

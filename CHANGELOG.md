@@ -31,6 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of JavaScript heap instead of 39 MB once the file is open, and it opens in
   2.3 s instead of 2.5 s. On a 63 MB file with many more faces, the reader
   peaks at 464 MB instead of 859 MB.
+- Hand the result to the page as it is made: the scene tree in pieces of
+  JSON, and the geometry as binary arrays instead of numbers in the JSON. On
+  the same assembly the reader peaks at 147 MB instead of 195 MB (step-io's
+  own savings had already brought it down from 243 MB), and the file opens in
+  1.9 s instead of 2.1 s. On the 63 MB file the reader peaks at 93 MB instead
+  of 426 MB, the tab at 800 MB instead of 930 MB, and the file opens in 2.2 s
+  instead of 2.6 s. Once that file is open, the tab holds about 40 MB more
+  than before, memory the browser keeps from passing the geometry over.
 - The build now uses `wasm-pack build --target no-modules`.
 
 ## [0.1.3] - 2026-10-06
