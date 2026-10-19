@@ -68,15 +68,19 @@ struct Report {
     norm: Vec<String>,
 }
 
+/// One tree node. `children` refer to nodes by id (`>= 0`) and to groups by
+/// `-1 - index` into `Output::groups`, so a node under several parents (an edge
+/// shared by two faces) is listed once.
 #[derive(Serialize)]
 struct Node {
-    id: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<u32>,
     kind: &'static str,
     label: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     meta: Vec<[String; 2]>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    children: Vec<Node>,
+    children: Vec<i64>,
 }
 
 /// Renderable geometry for a node id. `t`: "line" (polyline pts), "point"
@@ -100,7 +104,11 @@ struct Output {
     report: Option<Report>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     units: Vec<[String; 2]>,
-    tree: Vec<Node>,
+    /// The top-level groups, as child references.
+    tree: Vec<i64>,
+    /// Every node with an id, at that index.
+    nodes: Vec<Option<Node>>,
+    groups: Vec<Node>,
     geom: HashMap<u32, Geom>,
     /// Node id -> rendered geometry ids to highlight when that node is selected.
     /// Only carries entries for nodes without their own geometry subtree
@@ -148,6 +156,8 @@ pub fn load_step(source: &Source) -> String {
                 report: None,
                 units: vec![],
                 tree: vec![],
+                nodes: vec![],
+                groups: vec![],
                 geom: HashMap::new(),
                 hl: HashMap::new(),
                 warnings: vec![],
@@ -179,11 +189,18 @@ pub fn load_step(source: &Source) -> String {
     let mut emitted = HashSet::new();
     let mut model_nodes = Vec::new();
     for def in scene.root_definitions() {
-        model_nodes.push(b.emit_def(&def, &IDENTITY, true, None, &mut visited, &mut emitted));
+        model_nodes.push(i64::from(b.emit_def(
+            &def,
+            &IDENTITY,
+            true,
+            None,
+            &mut visited,
+            &mut emitted,
+        )));
     }
     // Canonical top-level categories are always emitted (empty ones render
     // disabled), so "unsupported" reads differently from "absent in this file".
-    roots.push(group("Model", model_nodes));
+    roots.push(b.group("Model", model_nodes));
 
     // Fallback: any solid not reached through the product structure is shown at
     // the origin, so geometry-only files never lose their geometry.
@@ -191,10 +208,10 @@ pub fn load_step(source: &Source) -> String {
     for solid in scene.all_solids() {
         if !emitted.contains(&solid.key()) {
             let mut imap = HashMap::new();
-            orphans.push(b.solid_node(&solid, &IDENTITY, &mut imap));
+            orphans.push(i64::from(b.solid_node(&solid, &IDENTITY, &mut imap)));
         }
     }
-    roots.push(group("Unplaced solids", orphans));
+    roots.push(b.group("Unplaced solids", orphans));
 
     // Node id -> rendered geometry ids to highlight (features/PMI only).
     let mut out_hl: HashMap<u32, Vec<u32>> = HashMap::new();
@@ -223,7 +240,7 @@ pub fn load_step(source: &Source) -> String {
             out_hl.insert(node_id, hl.clone());
         }
         feat_map.insert(f.key(), (node_id, hl));
-        features.push(leaf(node_id, "Feature", feature_label(&f), meta));
+        features.push(b.leaf(node_id, "Feature", feature_label(&f), meta));
     }
 
     // PMI. Datums are built first so tolerances can cross-reference them by
@@ -247,7 +264,7 @@ pub fn load_step(source: &Source) -> String {
             }
         }
         datum_map.insert(dt.key(), id);
-        datum_nodes.push(leaf(id, "Datum", format!("Datum {}", dt.letter()), meta));
+        datum_nodes.push(b.leaf(id, "Datum", format!("Datum {}", dt.letter()), meta));
     }
 
     let mut pmi = Vec::new();
@@ -268,7 +285,7 @@ pub fn load_step(source: &Source) -> String {
         if !hl.is_empty() {
             out_hl.insert(id, hl);
         }
-        pmi.push(leaf(id, "Dimension", label, meta));
+        pmi.push(b.leaf(id, "Dimension", label, meta));
     }
     for t in scene.tolerances() {
         let id = b.next();
@@ -297,7 +314,7 @@ pub fn load_step(source: &Source) -> String {
         if !hl.is_empty() {
             out_hl.insert(id, hl);
         }
-        pmi.push(leaf(
+        pmi.push(b.leaf(
             id,
             "Tolerance",
             format!("Tolerance ({:?}){tail}", t.kind()),
@@ -305,8 +322,8 @@ pub fn load_step(source: &Source) -> String {
         ));
     }
     pmi.extend(datum_nodes);
-    roots.push(group("PMI", pmi));
-    roots.push(group("Features", features));
+    roots.push(b.group("PMI", pmi));
+    roots.push(b.group("Features", features));
 
     // Units (length/angle + modelling precision) — file-level info, shown in the
     // info panel next to the header, not as a selectable scene-tree group.
@@ -348,15 +365,10 @@ pub fn load_step(source: &Source) -> String {
                     fallback: false,
                 },
             );
-            meshes.push(leaf(
-                id,
-                "Mesh",
-                format!("Mesh ({} tris)", tris.len()),
-                vec![],
-            ));
+            meshes.push(b.leaf(id, "Mesh", format!("Mesh ({} tris)", tris.len()), vec![]));
         }
     }
-    roots.push(group("Meshes", meshes));
+    roots.push(b.group("Meshes", meshes));
 
     json(&Output {
         ok: true,
@@ -365,6 +377,8 @@ pub fn load_step(source: &Source) -> String {
         report: Some(report),
         units,
         tree: roots,
+        nodes: b.nodes,
+        groups: b.groups,
         geom: b.geom,
         hl: out_hl,
         warnings: scene.warnings(),
@@ -381,6 +395,8 @@ struct Builder {
     /// it, accumulated across every placed instance. Lets features/PMI resolve
     /// the faces/edges they reference back to highlightable 3D objects.
     hl_ids: HashMap<EntityKey, Vec<u32>>,
+    nodes: Vec<Option<Node>>,
+    groups: Vec<Node>,
 }
 
 impl Builder {
@@ -388,6 +404,48 @@ impl Builder {
         let i = self.next;
         self.next += 1;
         i
+    }
+
+    /// Store the node `id` and return it.
+    fn put(
+        &mut self,
+        id: u32,
+        kind: &'static str,
+        label: String,
+        meta: Vec<[String; 2]>,
+        children: Vec<i64>,
+    ) -> u32 {
+        let i = id as usize;
+        if self.nodes.len() <= i {
+            self.nodes.resize_with(i + 1, || None);
+        }
+        self.nodes[i] = Some(Node {
+            id: Some(id),
+            kind,
+            label,
+            meta,
+            children,
+        });
+        id
+    }
+
+    fn leaf(&mut self, id: u32, kind: &'static str, label: String, meta: Vec<[String; 2]>) -> i64 {
+        i64::from(self.put(id, kind, label, meta, vec![]))
+    }
+
+    fn group(&mut self, label: &str, children: Vec<i64>) -> i64 {
+        self.groups.push(Node {
+            id: None,
+            kind: "Group",
+            label: label.to_string(),
+            meta: vec![],
+            children,
+        });
+        -(self.groups.len() as i64)
+    }
+
+    fn built(&self, id: u32) -> bool {
+        self.nodes.get(id as usize).is_some_and(Option::is_some)
     }
 
     /// Id deduped within one placed-instance map; distinct instances of a shared
@@ -412,7 +470,7 @@ impl Builder {
         placement: Option<Transform>,
         visited: &mut Vec<EntityKey>,
         emitted: &mut HashSet<EntityKey>,
-    ) -> Node {
+    ) -> u32 {
         let key = def.key();
         let cyclic = visited.contains(&key);
         visited.push(key);
@@ -424,7 +482,7 @@ impl Builder {
             let mut imap = HashMap::new();
             for solid in def.solids() {
                 emitted.insert(solid.key());
-                children.push(self.solid_node(&solid, world, &mut imap));
+                children.push(i64::from(self.solid_node(&solid, world, &mut imap)));
             }
             // placed children (occurrences carry the transform)
             for occ in def.occurrences() {
@@ -432,7 +490,14 @@ impl Builder {
                     let tf = occ.transform();
                     let local = tf.as_ref().and_then(|t| t.matrix()).unwrap_or(IDENTITY);
                     let child_world = mat_mul(world, &local);
-                    children.push(self.emit_def(&child, &child_world, false, tf, visited, emitted));
+                    children.push(i64::from(self.emit_def(
+                        &child,
+                        &child_world,
+                        false,
+                        tf,
+                        visited,
+                        emitted,
+                    )));
                 }
             }
         }
@@ -456,13 +521,8 @@ impl Builder {
             ));
         }
         meta.extend(plm_meta(def));
-        Node {
-            id: node_id,
-            kind: if is_root { "Part" } else { "Component" },
-            label,
-            meta,
-            children,
-        }
+        let kind = if is_root { "Part" } else { "Component" };
+        self.put(node_id, kind, label, meta, children)
     }
 
     fn solid_node(
@@ -470,16 +530,16 @@ impl Builder {
         solid: &Solid<'_>,
         world: &Mat,
         imap: &mut HashMap<EntityKey, u32>,
-    ) -> Node {
+    ) -> u32 {
         let sid = self.imap_id(imap, solid.key());
         let mut faces = Vec::new();
         let mut face_count = 0u32;
         let mut solid_edge_ids: Vec<u32> = Vec::new();
         for face in solid.faces() {
             face_count += 1;
-            let (node, edge_ids) = self.face_node(&face, world, imap);
+            let (fid, edge_ids) = self.face_node(&face, world, imap);
             solid_edge_ids.extend(&edge_ids);
-            faces.push(node);
+            faces.push(i64::from(fid));
         }
         // Internal voids (BREP_WITH_VOIDS): one group per cavity shell, its
         // faces surfaced like the outer shell's so the cavity is fully read.
@@ -489,11 +549,11 @@ impl Builder {
             let mut cavity_faces = Vec::new();
             for face in cavity {
                 face_count += 1;
-                let (node, edge_ids) = self.face_node(&face, world, imap);
+                let (fid, edge_ids) = self.face_node(&face, world, imap);
                 solid_edge_ids.extend(&edge_ids);
-                cavity_faces.push(node);
+                cavity_faces.push(i64::from(fid));
             }
-            faces.push(group(&format!("Void {}", i + 1), cavity_faces));
+            faces.push(self.group(&format!("Void {}", i + 1), cavity_faces));
         }
         self.hl_ids
             .entry(solid.key())
@@ -519,23 +579,17 @@ impl Builder {
         if void_count > 0 {
             meta.push(kv("voids", &void_count.to_string()));
         }
-        Node {
-            id: sid,
-            kind: "Solid",
-            label: "Solid".into(),
-            meta,
-            children: faces,
-        }
+        self.put(sid, "Solid", "Solid".into(), meta, faces)
     }
 
-    /// One face's tree node plus the ids of its edges (for highlight
+    /// One face's tree node id plus the ids of its edges (for highlight
     /// aggregation). Shared by a solid's outer shell and its void cavities.
     fn face_node(
         &mut self,
         face: &Face<'_>,
         world: &Mat,
         imap: &mut HashMap<EntityKey, u32>,
-    ) -> (Node, Vec<u32>) {
+    ) -> (u32, Vec<u32>) {
         let fid = self.imap_id(imap, face.key());
         let sk = kind_name(&format!("{:?}", face.surface().kind()));
         let mut fmeta = vec![kv("surface", &sk)];
@@ -558,30 +612,24 @@ impl Builder {
             let bid = self.imap_id(imap, bound.key());
             let mut edges = Vec::new();
             for (edge, _fwd) in bound.oriented_edges() {
-                let e = self.edge_node(&edge, world, imap);
-                face_edge_ids.push(e.id);
-                edges.push(e);
+                let eid = self.edge_node(&edge, world, imap);
+                face_edge_ids.push(eid);
+                edges.push(i64::from(eid));
             }
-            bounds.push(Node {
-                id: bid,
-                kind: "Bound",
-                label: "Bound".into(),
-                meta: vec![],
-                children: edges,
-            });
+            bounds.push(i64::from(self.put(
+                bid,
+                "Bound",
+                "Bound".into(),
+                vec![],
+                edges,
+            )));
         }
         // a feature referencing this face highlights the face's edges
         self.hl_ids
             .entry(face.key())
             .or_default()
             .extend(&face_edge_ids);
-        let node = Node {
-            id: fid,
-            kind: "Face",
-            label: format!("Face ({sk})"),
-            meta: fmeta,
-            children: bounds,
-        };
+        let node = self.put(fid, "Face", format!("Face ({sk})"), fmeta, bounds);
         (node, face_edge_ids)
     }
 
@@ -590,8 +638,12 @@ impl Builder {
         edge: &Edge<'_>,
         world: &Mat,
         imap: &mut HashMap<EntityKey, u32>,
-    ) -> Node {
+    ) -> u32 {
         let eid = self.imap_id(imap, edge.key());
+        if self.built(eid) {
+            // already listed in this instance
+            return eid;
+        }
         self.hl_ids.entry(edge.key()).or_default().push(eid);
         self.geom.entry(eid).or_insert_with(|| {
             let (d, fallback) = sample_edge(edge, world);
@@ -617,15 +669,9 @@ impl Builder {
         meta.push(kv("same sense", &edge.same_sense().to_string()));
         let mut children = Vec::new();
         for v in [edge.start(), edge.end()].into_iter().flatten() {
-            children.push(self.vertex_node(&v, world, imap));
+            children.push(i64::from(self.vertex_node(&v, world, imap)));
         }
-        Node {
-            id: eid,
-            kind: "Edge",
-            label: format!("Edge ({cname})"),
-            meta,
-            children,
-        }
+        self.put(eid, "Edge", format!("Edge ({cname})"), meta, children)
     }
 
     fn vertex_node(
@@ -633,8 +679,12 @@ impl Builder {
         v: &Vertex<'_>,
         world: &Mat,
         imap: &mut HashMap<EntityKey, u32>,
-    ) -> Node {
+    ) -> u32 {
         let vid = self.imap_id(imap, v.key());
+        if self.built(vid) {
+            // already listed in this instance
+            return vid;
+        }
         self.hl_ids.entry(v.key()).or_default().push(vid);
         let mut meta = vec![];
         if let Some(p) = v.point() {
@@ -653,13 +703,7 @@ impl Builder {
             let [x, y, z] = p.xyz();
             meta.push(kv("coords", &format!("{x}, {y}, {z}")));
         }
-        Node {
-            id: vid,
-            kind: "Vertex",
-            label: "Vertex".into(),
-            meta,
-            children: vec![],
-        }
+        self.put(vid, "Vertex", "Vertex".into(), meta, vec![])
     }
 }
 
@@ -1043,26 +1087,6 @@ fn kv(k: &str, v: &str) -> [String; 2] {
 fn rgb_hex(c: Rgb) -> String {
     let q = |x: f64| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
     format!("#{:02x}{:02x}{:02x}", q(c.red), q(c.green), q(c.blue))
-}
-
-fn leaf(id: u32, kind: &'static str, label: String, meta: Vec<[String; 2]>) -> Node {
-    Node {
-        id,
-        kind,
-        label,
-        meta,
-        children: vec![],
-    }
-}
-
-fn group(label: &str, children: Vec<Node>) -> Node {
-    Node {
-        id: u32::MAX,
-        kind: "Group",
-        label: label.to_string(),
-        meta: vec![],
-        children,
-    }
 }
 
 fn json(o: &Output) -> String {

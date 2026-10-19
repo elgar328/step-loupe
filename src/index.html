@@ -730,6 +730,17 @@ function renderNode(node, depth) {
   return row;
 }
 
+// The reader sends each node once, in a table: `children` hold node ids (>= 0)
+// and group references (-1 - index into `groups`). Put the objects in their
+// place, so a node under several parents is one shared object.
+function linkTree(out) {
+  const nodes = out.nodes || [], groups = out.groups || [];
+  const ref = (c) => (c >= 0 ? nodes[c] : groups[-1 - c]);
+  for (const n of nodes) if (n.children) n.children = n.children.map(ref);
+  for (const g of groups) if (g.children) g.children = g.children.map(ref);
+  return (out.tree || []).map(ref);
+}
+
 function buildTree(roots) {
   selRow = null; selNode = null;
   const frag = document.createDocumentFragment();
@@ -871,7 +882,7 @@ async function loadBlob(blob, up = 'y') {
   lastBox = buildObjects(out.geom || {});
   setUp(up);
   upEl.hidden = false;
-  tree.appendChild(buildTree(out.tree || []));
+  tree.appendChild(buildTree(linkTree(out)));
   drop.style.display = 'none';
 }
 

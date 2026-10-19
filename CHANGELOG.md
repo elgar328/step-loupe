@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reader peaks at 331 MB instead of 436 MB, and the tab keeps about 100 MB
   less afterwards. A file that cannot be read, such as one deleted or changed
   since it was picked, now shows an error instead of nothing.
+- Send the scene tree with each node once: an edge shared by two faces, or a
+  vertex shared by its edges, was copied under each of them. On the same
+  assembly the reader peaks at 243 MB instead of 331 MB, the page holds 18 MB
+  of JavaScript heap instead of 39 MB once the file is open, and it opens in
+  2.3 s instead of 2.5 s. On a 63 MB file with many more faces, the reader
+  peaks at 464 MB instead of 859 MB.
 - The build now uses `wasm-pack build --target no-modules`.
 
 ## [0.1.3] - 2026-10-06
