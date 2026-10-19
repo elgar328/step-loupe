@@ -239,19 +239,21 @@ const wasmBytes = new Uint8Array(await (await fetch('./pkg/step_loupe_bg.wasm'))
 // Worker: a module Worker from a blob: URL is refused when the page is opened
 // from file:// (the offline bundle). The Worker reads the file itself, a block
 // at a time, and hands the reader the pieces it asks for, so the reader never
-// holds the whole file.
+// holds the whole file. From file:// the page reads it instead and hands the
+// bytes over, which the Worker then gives out the same way.
 const wasmModule = await WebAssembly.compile(wasmBytes);
 const readerUrl = URL.createObjectURL(new Blob([glueSrc, `
 const BLOCK = 8 << 20; // bytes per FileReaderSync call
 self.onmessage = (e) => {
   try {
     wasm_bindgen.initSync({ module: e.data.module });
-    const file = e.data.file, reader = new FileReaderSync();
-    let at = 0, block = new Uint8Array(0), used = 0;
+    const file = e.data.file, reader = file && new FileReaderSync();
+    let at = 0, block = e.data.bytes || new Uint8Array(0), used = 0;
     const source = {
       readInto(buf) {
         try {
           if (used === block.length) {
+            if (!file) return 0;
             if (at >= file.size) {
               // A file gone since it was picked reads as empty; reading it
               // whole is what reports that.
@@ -283,7 +285,8 @@ const CANCELLED = Symbol('cancelled');
 let reading = null; // the running read: { worker, resolve }
 
 // Read a STEP file (a Blob) into the viewer JSON. Starting a read cancels the
-// one still running. The Worker gets the Blob itself, not a copy of its bytes.
+// one still running. The Worker gets the Blob itself, not a copy of its bytes,
+// except from file://, where it gets the bytes the page read.
 function readStep(file) {
   if (reading) {
     reading.worker.terminate();
@@ -303,7 +306,19 @@ function readStep(file) {
       e.data.error ? reject(new Error(e.data.error)) : resolve(e.data.json));
     worker.onerror = (e) => { e.preventDefault(); settle(() => reject(new Error(e.message || 'the reader stopped'))); };
     worker.onmessageerror = () => settle(() => reject(new Error('the read result could not be received')));
-    worker.postMessage({ module: wasmModule, file });
+    if (location.protocol !== 'file:') {
+      worker.postMessage({ module: wasmModule, file });
+      return;
+    }
+    // Safari will not let a Worker read a picked file when the page is opened
+    // from file://.
+    file.arrayBuffer().then(
+      (buf) => {
+        if (reading === me) worker.postMessage({ module: wasmModule, bytes: new Uint8Array(buf) }, [buf]);
+      },
+      (err) => settle(() =>
+        resolve(JSON.stringify({ ok: false, error: `could not read the file: ${err}` }))),
+    );
   });
 }
 
