@@ -844,9 +844,10 @@ function showReport(r, warnings) {
   root.appendChild(kvRow('input', String(r.n_in), 1));
   root.appendChild(kvRow('kept', String(r.validated), 1));
   root.appendChild(kvRow('synthesized', String(r.n_synth), 1));
-  // Always show all three categories (empty ones render as "(0)").
+  // Always show every category (empty ones render as "(0)").
   root.appendChild(subSection('dropped', drops, 1, ([id, why], d) => kvRow('#' + id, why, d)));
-  root.appendChild(subSection('normalized', r.norm, 1, (s, d) => textRow(s, d)));
+  root.appendChild(subSection('normalized', r.norm, 1, ([id, note], d) => kvRow('#' + id, note, d)));
+  root.appendChild(subSection('parse warnings', r.parse_warnings, 1, (s, d) => textRow(s, d)));
   root.appendChild(subSection('warnings', warnings, 1, (s, d) => textRow(s, d)));
   el.appendChild(root);
 }

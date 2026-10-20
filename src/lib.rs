@@ -66,7 +66,8 @@ struct Report {
     validated: usize,
     n_synth: usize,
     dropped: Vec<(u64, String)>,
-    norm: Vec<String>,
+    norm: Vec<(u64, String)>,
+    parse_warnings: Vec<String>,
 }
 
 /// One tree node, written out as soon as it is made: children come before their
@@ -228,7 +229,7 @@ pub fn load_step(source: &Source, sink: &Sink) {
         Ok(v) => v,
         Err(e) => {
             let error = match e {
-                step_io::Error::Io { message, .. } => format!("could not read the file: {message}"),
+                step_io::Error::Io(e) => format!("could not read the file: {e}"),
                 e => format!("parse failed: {e}"),
             };
             let mut json = Json::new(sink);
@@ -241,15 +242,20 @@ pub fn load_step(source: &Source, sink: &Sink) {
     let header = build_header(model.header());
 
     let report = Report {
-        n_in: rep.n_in,
-        validated: rep.validated,
-        n_synth: rep.n_synth,
+        n_in: rep.entities_read,
+        validated: rep.entities_kept,
+        n_synth: rep.entities_added,
         dropped: rep
             .dropped
             .iter()
-            .map(|(id, r)| (*id, format!("{:?}: {}", r.kind, r.key)))
+            .map(|(id, r)| (*id, r.to_string()))
             .collect(),
-        norm: rep.norm.iter().map(|s| s.to_string()).collect(),
+        norm: rep
+            .normalized
+            .iter()
+            .map(|(id, note)| (*id, (*note).to_string()))
+            .collect(),
+        parse_warnings: rep.parse_warnings.iter().map(ToString::to_string).collect(),
     };
 
     let scene = model.scene();
@@ -1284,17 +1290,8 @@ fn basis(i: usize, p: usize, t: f64, u: &[f64]) -> f64 {
 // ---------- header (from the model, step-io >= 0.2) ----------
 
 fn build_header(h: &step_io::FileHeader) -> Header {
-    // Recognized schemas render a clean label ("AP242 ed2 (IS)"); an
-    // unrecognized family renders "unrecognized schema", so fall back to the
-    // raw FILE_SCHEMA strings ("ISO-10303-042") which are more informative.
-    let schema = if matches!(h.schema.family, step_io::ApFamily::Other) {
-        h.schema
-            .raw()
-            .map(|r| r.as_slice().join(", "))
-            .unwrap_or_else(|| h.schema.to_string())
-    } else {
-        h.schema.to_string()
-    };
+    // "AP242 ed2 (IS)"; an unrecognized schema prints its FILE_SCHEMA names.
+    let schema = h.schema.to_string();
     Header {
         file_name: h.file_name.clone(),
         time_stamp: h.time_stamp.clone(),
@@ -1305,11 +1302,7 @@ fn build_header(h: &step_io::FileHeader) -> Header {
         authorisation: h.authorisation.clone(),
         description: h.description.clone(),
         schema,
-        raw_schema: h
-            .schema
-            .raw()
-            .map(|r| r.as_slice().to_vec())
-            .unwrap_or_default(),
+        raw_schema: h.schema.raw.clone(),
     }
 }
 
