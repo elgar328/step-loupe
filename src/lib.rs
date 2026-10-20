@@ -300,7 +300,7 @@ pub fn load_step(source: &Source, sink: &Sink) {
     // Description and referenced geometry go to the detail pane as meta rows.
     let mut feat_map: HashMap<EntityKey, (u32, Vec<u32>)> = HashMap::new();
     let mut features = Vec::new();
-    for f in scene.features() {
+    for f in scene.all_features() {
         let node_id = b.next();
         let mut meta = Vec::new();
         if let Some(desc) = f.description() {
@@ -309,9 +309,9 @@ pub fn load_step(source: &Source, sink: &Sink) {
             }
         }
         let mut hl: Vec<u32> = Vec::new();
-        for g in f.geometry().iter() {
-            meta.push(kv("ref", &fg_label(g)));
-            if let Some(ids) = b.hl_ids.get(&fg_key(g)) {
+        for g in f.geometry() {
+            meta.push(kv("ref", &fg_label(&g)));
+            if let Some(ids) = fg_key(&g).and_then(|k| b.hl_ids.get(&k)) {
                 hl.extend(ids);
             }
         }
@@ -326,7 +326,7 @@ pub fn load_step(source: &Source, sink: &Sink) {
     // number; in the group they display after dimensions and tolerances.
     let mut datum_map: HashMap<EntityKey, u32> = HashMap::new();
     let mut datum_nodes = Vec::new();
-    for dt in scene.datums() {
+    for dt in scene.all_datums() {
         let id = b.next();
         let mut meta = vec![kv("letter", dt.letter())];
         if !dt.name().is_empty() {
@@ -347,7 +347,7 @@ pub fn load_step(source: &Source, sink: &Sink) {
     }
 
     let mut pmi = Vec::new();
-    for d in scene.dimensions() {
+    for d in scene.all_dimensions() {
         let id = b.next();
         let mut meta = Vec::new();
         let label = match d.value() {
@@ -366,7 +366,7 @@ pub fn load_step(source: &Source, sink: &Sink) {
         }
         pmi.push(b.leaf(id, "Dimension", label, meta));
     }
-    for t in scene.tolerances() {
+    for t in scene.all_tolerances() {
         let id = b.next();
         let mut meta = Vec::new();
         let mut tail = String::new();
@@ -374,7 +374,7 @@ pub fn load_step(source: &Source, sink: &Sink) {
             meta.push(kv("magnitude", &m.to_string()));
             tail.push_str(&format!(": {m}"));
         }
-        let ds = t.datums();
+        let ds: Vec<_> = t.datums().collect();
         if !ds.is_empty() {
             let letters: Vec<String> = ds.iter().map(|d| d.letter().to_string()).collect();
             tail.push_str(&format!(" | {}", letters.join(",")));
@@ -452,7 +452,8 @@ pub fn load_step(source: &Source, sink: &Sink) {
         json.value(&out_hl);
     }
     json.raw(r#","warnings":"#);
-    json.value(&scene.warnings());
+    let warnings: Vec<String> = scene.warnings().iter().map(ToString::to_string).collect();
+    json.value(&warnings);
     json.raw("}");
     json.flush();
 }
@@ -631,11 +632,11 @@ impl<'a> Builder<'a> {
         }
         // Internal voids (BREP_WITH_VOIDS): one group per cavity shell, its
         // faces surfaced like the outer shell's so the cavity is fully read.
-        let voids = solid.voids();
+        let voids: Vec<_> = solid.voids().collect();
         let void_count = voids.len();
-        for (i, cavity) in voids.into_iter().enumerate() {
+        for (i, (cavity, _)) in voids.into_iter().enumerate() {
             let mut cavity_faces = Vec::new();
-            for face in cavity {
+            for face in cavity.faces() {
                 face_count += 1;
                 let (fid, edge_ids) = self.face_node(&face, world, imap);
                 solid_edge_ids.extend(&edge_ids);
@@ -844,7 +845,6 @@ fn plm_meta(def: &ProductDef<'_>) -> Vec<[String; 2]> {
     if let Some(p) = def.product() {
         let vers: Vec<String> = p
             .versions()
-            .iter()
             .map(|v| v.id().to_string())
             .filter(|s| !s.is_empty())
             .collect();
@@ -905,16 +905,17 @@ fn feature_label(f: &Feature<'_>) -> String {
 }
 
 /// The `EntityKey` of the geometry a `FeatureGeometry` designates, for looking
-/// it up in `Builder::hl_ids`.
-fn fg_key(g: &FeatureGeometry<'_>) -> EntityKey {
-    match g {
+/// it up in `Builder::hl_ids`; `None` for a kind this viewer does not know.
+fn fg_key(g: &FeatureGeometry<'_>) -> Option<EntityKey> {
+    Some(match g {
         FeatureGeometry::Face(h) => h.key(),
         FeatureGeometry::Edge(h) => h.key(),
         FeatureGeometry::Point(h) => h.key(),
         FeatureGeometry::Solid(h) => h.key(),
         FeatureGeometry::Curve(h) => h.key(),
         FeatureGeometry::Other(k) => *k,
-    }
+        _ => return None,
+    })
 }
 
 /// Record a PMI item's "applies to" feature: cross-reference by node number when
@@ -946,6 +947,7 @@ fn fg_label(g: &FeatureGeometry<'_>) -> String {
         FeatureGeometry::Solid(h) => format!("Solid {:?}", h.key()),
         FeatureGeometry::Curve(h) => format!("Curve {:?}", h.key()),
         FeatureGeometry::Other(k) => format!("Other {k:?}"),
+        other => format!("{other:?}"),
     }
 }
 
@@ -963,8 +965,8 @@ fn def_label_meta(def: &ProductDef<'_>) -> (String, Vec<[String; 2]>) {
         }
     }
     if let Some(v) = def.version() {
-        if !v.is_empty() {
-            meta.push(kv("version", v));
+        if !v.id().is_empty() {
+            meta.push(kv("version", v.id()));
         }
     }
     if label.is_empty() {
