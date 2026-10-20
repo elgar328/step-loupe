@@ -1300,7 +1300,7 @@ fn build_header(h: &step_io::FileHeader) -> Header {
         preprocessor: h.preprocessor_version.clone(),
         originating_system: h.originating_system.clone(),
         authorisation: h.authorisation.clone(),
-        description: h.description.clone(),
+        description: h.descriptions.join(", "),
         schema,
         raw_schema: h.schema.raw.clone(),
     }
