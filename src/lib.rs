@@ -6,10 +6,10 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::Serialize;
-use step_io::scene::geometry::{Edge, Face, Solid, Vertex};
-use step_io::scene::pmi::{Feature, FeatureGeometry};
-use step_io::scene::product::{ApprovalDate, Person, ProductDef, Transform};
-use step_io::scene::Rgb;
+use step_io::scene::{
+    ApprovalDate, Edge, Face, Feature, FeatureGeometry, Person, ProductDef, Rgb, Solid, Transform,
+    Vertex,
+};
 use step_io::EntityKey;
 use wasm_bindgen::prelude::*;
 
