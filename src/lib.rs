@@ -3,12 +3,12 @@
 //! JS sink as it is made: a JSON bundle (report, header, tree) in pieces, and the
 //! rendered geometry in binary runs. The HTML/three.js front-end renders both.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::Serialize;
 use step_io::scene::{
-    ApprovalDate, Edge, Face, Feature, FeatureGeometry, Person, ProductDef, Rgb, Solid, Transform,
-    Vertex,
+    ApprovalDate, Edge, Face, Feature, FeatureGeometry, GeometricSet, Person, ProductDef, Rgb,
+    SetElement, Solid, SurfaceModel, Transform, Vertex,
 };
 use step_io::EntityKey;
 use wasm_bindgen::prelude::*;
@@ -281,8 +281,9 @@ pub fn load_step(source: &Source, sink: &Sink) {
     // disabled), so "unsupported" reads differently from "absent in this file".
     roots.push(b.group("Model", model_nodes));
 
-    // Fallback: any solid not reached through the product structure is shown at
-    // the origin, so geometry-only files never lose their geometry.
+    // Fallback: any solid, surface model or geometric set not reached through
+    // the product structure is shown at the origin, so geometry-only files
+    // never lose their geometry.
     let mut orphans = Vec::new();
     for solid in scene.all_solids() {
         if !emitted.contains(&solid.key()) {
@@ -290,10 +291,23 @@ pub fn load_step(source: &Source, sink: &Sink) {
             orphans.push(i64::from(b.solid_node(&solid, &IDENTITY, &mut imap)));
         }
     }
-    roots.push(b.group("Unplaced solids", orphans));
+    for sm in scene.all_surface_models() {
+        if !emitted.contains(&sm.key()) {
+            let mut imap = HashMap::new();
+            orphans.push(i64::from(b.surface_model_node(&sm, &IDENTITY, &mut imap)));
+        }
+    }
+    for set in scene.all_geometric_sets() {
+        if !emitted.contains(&set.key()) {
+            let mut imap = HashMap::new();
+            orphans.push(i64::from(b.set_node(&set, &IDENTITY, &mut imap)));
+        }
+    }
+    roots.push(b.group("Unplaced geometry", orphans));
 
-    // Node id -> rendered geometry ids to highlight (features/PMI only).
-    let mut out_hl: HashMap<u32, Vec<u32>> = HashMap::new();
+    // Node id -> rendered geometry ids to highlight (features/PMI only), in id
+    // order so the bundle is the same from run to run.
+    let mut out_hl: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
 
     // Features first: build the nodes and a key -> (node id, highlight ids) map
     // so PMI can cross-reference each by number and inherit its 3D highlight.
@@ -573,6 +587,14 @@ impl<'a> Builder<'a> {
                 emitted.insert(solid.key());
                 children.push(i64::from(self.solid_node(&solid, world, &mut imap)));
             }
+            for sm in def.surface_models() {
+                emitted.insert(sm.key());
+                children.push(i64::from(self.surface_model_node(&sm, world, &mut imap)));
+            }
+            for set in def.geometric_sets() {
+                emitted.insert(set.key());
+                children.push(i64::from(self.set_node(&set, world, &mut imap)));
+            }
             // placed children (occurrences carry the transform)
             for occ in def.occurrences() {
                 if let Some(child) = occ.definition() {
@@ -671,6 +693,147 @@ impl<'a> Builder<'a> {
         self.put(sid, "Solid", "Solid".into(), meta, faces)
     }
 
+    /// A surface model (sheet body): its faces, one group per shell when it
+    /// has several.
+    fn surface_model_node(
+        &mut self,
+        sm: &SurfaceModel<'_>,
+        world: &Mat,
+        imap: &mut HashMap<EntityKey, u32>,
+    ) -> u32 {
+        let sid = self.imap_id(imap, sm.key());
+        let shells: Vec<_> = sm.shells().collect();
+        let mut children = Vec::new();
+        let mut face_count = 0u32;
+        let mut open = 0u32;
+        let mut edge_ids: Vec<u32> = Vec::new();
+        for (i, (shell, _)) in shells.iter().enumerate() {
+            if !shell.is_closed() {
+                open += 1;
+            }
+            let mut faces = Vec::new();
+            for face in shell.faces() {
+                face_count += 1;
+                let (fid, ids) = self.face_node(&face, world, imap);
+                edge_ids.extend(&ids);
+                faces.push(i64::from(fid));
+            }
+            if shells.len() == 1 {
+                children = faces;
+            } else {
+                let kind = if shell.is_closed() { "closed" } else { "open" };
+                children.push(self.group(&format!("Shell {} ({kind})", i + 1), faces));
+            }
+        }
+        self.hl_ids.entry(sm.key()).or_default().extend(edge_ids);
+        let mut meta = Vec::new();
+        if !sm.name().is_empty() {
+            meta.push(kv("name", sm.name()));
+        }
+        if let Some(c) = sm.color() {
+            meta.push(kv("color", &rgb_hex(c)));
+        }
+        if let Some(t) = sm.transparency() {
+            meta.push(kv("transparency", &t.to_string()));
+        }
+        if let Some(l) = sm.layer() {
+            meta.push(kv("layer", l));
+        }
+        if !sm.is_visible() {
+            meta.push(kv("visible", "false"));
+        }
+        meta.push(kv("shells", &shells.len().to_string()));
+        if open > 0 {
+            meta.push(kv("open shells", &open.to_string()));
+        }
+        meta.push(kv("faces", &face_count.to_string()));
+        self.put(sid, "Surface body", "Surface body".into(), meta, children)
+    }
+
+    /// A geometric set (wireframe or sketch): one leaf per element, curves
+    /// drawn as lines and points as points.
+    fn set_node(
+        &mut self,
+        set: &GeometricSet<'_>,
+        world: &Mat,
+        imap: &mut HashMap<EntityKey, u32>,
+    ) -> u32 {
+        let id = self.imap_id(imap, set.key());
+        let mut children = Vec::new();
+        let mut drawn: Vec<u32> = Vec::new();
+        for element in set.elements() {
+            match element {
+                SetElement::Curve(curve) => {
+                    let cid = self.imap_id(imap, curve.key());
+                    if !self.built(cid) {
+                        let cname = kind_name(&format!("{:?}", curve.kind()));
+                        let mut meta = vec![kv("curve", &cname)];
+                        match curve.to_nurbs() {
+                            Some(nc) => {
+                                let pts = tessellate_nurbs(
+                                    &nc.control_points,
+                                    &nc.weights,
+                                    &nc.knots,
+                                    nc.degree,
+                                );
+                                self.geom.push(cid, LINE, flatten_world(&pts, world), []);
+                            }
+                            None => meta.push(kv("drawn", "no (unbounded or unsupported)")),
+                        }
+                        if let Some(c) = curve.color() {
+                            meta.push(kv("color", &rgb_hex(c)));
+                        }
+                        if let Some(l) = curve.layer() {
+                            meta.push(kv("layer", l));
+                        }
+                        self.hl_ids.entry(curve.key()).or_default().push(cid);
+                        self.put(cid, "Curve", format!("Curve ({cname})"), meta, vec![]);
+                    }
+                    drawn.push(cid);
+                    children.push(i64::from(cid));
+                }
+                SetElement::Point(point) => {
+                    let pid = self.imap_id(imap, point.key());
+                    if !self.built(pid) {
+                        self.geom
+                            .push(pid, POINT, apply(world, point.xyz()).map(|c| c as f32), []);
+                        let [x, y, z] = point.xyz();
+                        let mut meta = vec![kv("coords", &format!("{x}, {y}, {z}"))];
+                        if let Some(c) = point.color() {
+                            meta.push(kv("color", &rgb_hex(c)));
+                        }
+                        self.hl_ids.entry(point.key()).or_default().push(pid);
+                        self.put(pid, "Point", "Point".into(), meta, vec![]);
+                    }
+                    drawn.push(pid);
+                    children.push(i64::from(pid));
+                }
+                SetElement::Other(key) => {
+                    let oid = self.next();
+                    let name = key.keyword().unwrap_or("complex entity");
+                    children.push(self.leaf(oid, "Item", name.to_string(), vec![]));
+                }
+                _ => {}
+            }
+        }
+        self.hl_ids.entry(set.key()).or_default().extend(drawn);
+        let mut meta = Vec::new();
+        if !set.name().is_empty() {
+            meta.push(kv("name", set.name()));
+        }
+        if let Some(c) = set.color() {
+            meta.push(kv("color", &rgb_hex(c)));
+        }
+        if let Some(l) = set.layer() {
+            meta.push(kv("layer", l));
+        }
+        if !set.is_visible() {
+            meta.push(kv("visible", "false"));
+        }
+        meta.push(kv("elements", &children.len().to_string()));
+        self.put(id, "Wireframe", "Wireframe".into(), meta, children)
+    }
+
     /// One face's tree node id plus the ids of its edges (for highlight
     /// aggregation). Shared by a solid's outer shell and its void cavities.
     fn face_node(
@@ -740,13 +903,14 @@ impl<'a> Builder<'a> {
         let curve = edge.curve();
         let cname = kind_name(&format!("{:?}", curve.kind()));
         let mut meta = vec![kv("curve", &cname)];
-        if let Some(c) = curve.color() {
+        // A line style on the edge itself, else on its curve.
+        if let Some(c) = edge.color().or_else(|| curve.color()) {
             meta.push(kv("color", &rgb_hex(c)));
         }
-        if let Some(w) = curve.width() {
+        if let Some(w) = edge.width().or_else(|| curve.width()) {
             meta.push(kv("width", &w.to_string()));
         }
-        if let Some(f) = curve.line_font() {
+        if let Some(f) = edge.line_font().or_else(|| curve.line_font()) {
             meta.push(kv("line font", f));
         }
         meta.push(kv("same sense", &edge.same_sense().to_string()));
@@ -913,6 +1077,8 @@ fn fg_key(g: &FeatureGeometry<'_>) -> Option<EntityKey> {
         FeatureGeometry::Point(h) => h.key(),
         FeatureGeometry::Solid(h) => h.key(),
         FeatureGeometry::Curve(h) => h.key(),
+        FeatureGeometry::Mesh(h) => h.key(),
+        FeatureGeometry::GeometricSet(h) => h.key(),
         FeatureGeometry::Other(k) => *k,
         _ => return None,
     })
@@ -946,7 +1112,9 @@ fn fg_label(g: &FeatureGeometry<'_>) -> String {
         FeatureGeometry::Point(h) => format!("Point {:?}", h.key()),
         FeatureGeometry::Solid(h) => format!("Solid {:?}", h.key()),
         FeatureGeometry::Curve(h) => format!("Curve {:?}", h.key()),
-        FeatureGeometry::Other(k) => format!("Other {k:?}"),
+        FeatureGeometry::Mesh(h) => format!("Mesh {:?}", h.key()),
+        FeatureGeometry::GeometricSet(h) => format!("Wireframe {:?}", h.key()),
+        FeatureGeometry::Other(k) => format!("{} {k:?}", k.keyword().unwrap_or("complex entity")),
         other => format!("{other:?}"),
     }
 }
