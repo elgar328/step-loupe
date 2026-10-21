@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A file opens framed to the points it draws rather than to their bounding
+  box, so the model fills the view, with a small margin at the edges.
+
 ## [0.1.4] - 2026-10-21
 
 ### Added

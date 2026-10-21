@@ -425,6 +425,7 @@ function eachGeom(geom, fn) {
 
 function buildObjects(geom) {
   const box = new THREE.Box3();
+  const points = [];   // every drawn position, for the camera fit
   const segCount = d => Math.max(0, d.length / 3 - 1);
   let nSeg = 0, nFall = 0, nPt = 0;
   eachGeom(geom, (id, kind, d) => {
@@ -464,6 +465,7 @@ function buildObjects(geom) {
       // see-through objects far to near, which a merged mesh would lose.
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(d, 3));
+      points.push(d);
       if (tri.length) geo.setIndex(new THREE.BufferAttribute(tri, 1));
       geo.computeVertexNormals();
       const obj = new THREE.Mesh(geo, M.mesh);
@@ -498,7 +500,8 @@ function buildObjects(geom) {
     add(new THREE.Points(geo, M.pt), ORDER.pt);
   }
   edgeSegs = segs; vertexPts = pts;
-  return box;
+  points.push(segs, fall, pts);
+  return { box, points };
 }
 
 // ---- up axis ----
@@ -512,7 +515,7 @@ const UP = {
   z: { up: new THREE.Vector3(0, 0, 1), forward: new THREE.Vector3(1, -1, 0.8) },
 };
 let upAxis = 'y';
-let lastBox = new THREE.Box3();
+let lastFit = { box: new THREE.Box3(), points: [] };
 const upParam = (new URLSearchParams(location.search).get('up') || '').toLowerCase() === 'z' ? 'z' : 'y';
 
 function setUp(axis) {
@@ -520,7 +523,7 @@ function setUp(axis) {
   controls.dispose();
   camera.up.copy(UP[axis].up);
   controls = new OrbitControls(camera, renderer.domElement);
-  fitCamera(lastBox);
+  fitCamera(lastFit);
   const btn = document.getElementById('up-btn');
   btn.textContent = axis.toUpperCase() + '\u2191';
   btn.setAttribute('aria-label', `Up axis: ${axis.toUpperCase()}`);
@@ -543,13 +546,13 @@ document.addEventListener('pointerdown', (e) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openUpMenu(false); });
 
-function fitCamera(box) {
-  lastBox = box;
+function fitCamera(fit) {
+  lastFit = fit;
+  const { box, points } = fit;
   if (box.isEmpty()) return;
-  // Rotate around the AABB centre and frame the box tightly: project all 8
-  // corners onto the view axes and pull the camera to the closest distance that
-  // still contains every corner (respecting the viewport aspect). This fills the
-  // frame far better than a bounding-sphere fit, whose empty corners waste space.
+  // Rotate around the AABB centre, and pull the camera in to the closest
+  // distance at which every drawn point still sits inside the middle 90% of the
+  // view (a 5% margin at each edge, respecting the viewport aspect).
   const c = box.getCenter(new THREE.Vector3());
   controls.target.copy(c);
 
@@ -557,20 +560,25 @@ function fitCamera(box) {
   const forward = dir.clone().normalize();   // target → camera
   const right = new THREE.Vector3().crossVectors(worldUp, forward).normalize();
   const up = new THREE.Vector3().crossVectors(forward, right).normalize();
-  const tanV = Math.tan((camera.fov * Math.PI / 180) / 2);
+  const tanV = Math.tan((camera.fov * Math.PI / 180) / 2) * 0.9;
   const tanH = tanV * camera.aspect;
 
-  const min = box.min, max = box.max;
-  let dist = 0;
-  for (let i = 0; i < 8; i++) {
-    const p = new THREE.Vector3(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z).sub(c);
-    const x = p.dot(right), y = p.dot(up), z = p.dot(forward);
-    dist = Math.max(dist, z + Math.abs(x) / tanH, z + Math.abs(y) / tanV);
+  let dist = 0, front = 0;
+  for (const d of points) {
+    for (let i = 0; i < d.length; i += 3) {
+      const px = d[i] - c.x, py = d[i + 1] - c.y, pz = d[i + 2] - c.z;
+      const x = px * right.x + py * right.y + pz * right.z;
+      const y = px * up.x + py * up.y + pz * up.z;
+      const z = px * forward.x + py * forward.y + pz * forward.z;
+      dist = Math.max(dist, z + Math.abs(x) / tanH, z + Math.abs(y) / tanV);
+      front = Math.max(front, z);
+    }
   }
-  dist *= 1.05;   // ~5% breathing room
+  const size = box.getSize(new THREE.Vector3()).length() || 1;
+  // Stay clear of the nearest point, past the near plane set below.
+  dist = Math.max(dist, front + size / 50);
 
   camera.position.copy(c).add(forward.multiplyScalar(dist));
-  const size = box.getSize(new THREE.Vector3()).length() || 1;
   camera.near = size / 100; camera.far = size * 1000; camera.updateProjectionMatrix();
   controls.update();
 }
@@ -909,7 +917,7 @@ async function loadBlob(blob, up = 'y') {
     return;
   }
   HLMAP = out.hl || {};
-  lastBox = buildObjects(geom);
+  lastFit = buildObjects(geom);
   setUp(up);
   upEl.hidden = false;
   tree.appendChild(buildTree(linkTree(out)));
