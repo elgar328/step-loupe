@@ -11,8 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A file opens framed to the points it draws rather than to their bounding
   box, so the model fills the view, with a small margin at the edges.
+- A new, dark look: one theme across the sidebar and the view, the app's
+  name at the top, and a welcome card to drop a file on or try the sample.
+  PMI lettering and other wireframes are drawn in amber, apart from the
+  edges, and vertices show only when picked.
+- While something is highlighted, the rest of the model fades back, so a
+  small part stands out.
 - Clicking a row in the tree selects it without opening or closing it; its
   arrow does that.
+
+### Fixed
+
+- Lines are as thick on a high-density (Retina) screen as on any other; they
+  used to be half as thick there.
 
 ## [0.1.4] - 2026-10-21
 
