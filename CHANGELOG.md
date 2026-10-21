@@ -7,8 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Show surface bodies (`SHELL_BASED_SURFACE_MODEL`), with one group per
+  shell when a body has several, and wireframes and sketches
+  (`GEOMETRIC_SET`, `GEOMETRIC_CURVE_SET`) as their curves and points.
+  Geometry that no part holds is listed under **Unplaced geometry**, which
+  replaces **Unplaced solids**.
+- The report lists the parser's warnings, and each normalization note names
+  the entity it is about.
+- An edge shows the line style (colour, width, font) set on the edge itself,
+  else its curve's.
+
 ### Changed
 
+- Bump `step-io` to 0.3.0.
+- A file with parabolas shows the edges and faces built on them, which used
+  to be lost, and edges on parabolas and hyperbolas follow the curve instead
+  of a red dashed straight stand-in.
+- A face on a degenerate torus or an offset surface, and a hyperbola or
+  parabola curve, names its kind (`DegenerateToroidal`, `Offset`,
+  `Hyperbola`, `Parabola`) instead of `Other`.
+- Text shows the characters its escapes stand for (`\X2\…\X0\` and the
+  like), and a UTF-8 file with one broken character no longer has all its
+  text read as ISO 8859-1.
+- A face shows its `orientation` (`Forward` or `Reversed`) instead of
+  `same sense`.
+- The header's schema shows only what the file pins, such as `AP214` or
+  `AP214 (CD)`, instead of `AP214 ed? (?)`.
+- The report no longer repeats a warning when the same geometry is reached
+  more than once.
 - Draw the edges and the vertices as a few shared objects instead of one
   object each, so a large file turns smoothly. On a 110 MB assembly (31,000
   edges, 20,000 vertices) the view redraws at the display's 60 fps instead of
@@ -40,6 +68,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of 2.6 s. Once that file is open, the tab holds about 40 MB more
   than before, memory the browser keeps from passing the geometry over.
 - The build now uses `wasm-pack build --target no-modules`.
+
+### Fixed
+
+- Components of assemblies written as SolidWorks writes them are placed
+  where they belong; they used to land at the inverse placement.
+- A part held as a `PRODUCT_DEFINITION_WITH_ASSOCIATED_DOCUMENTS` that an
+  assembly uses no longer also shows as a root of its own.
+- A circle or ellipse trimmed more than a full turn apart is drawn as the
+  arc within one turn, where a trim like `1.E17` used to hang the read.
+- A file with broken B-spline values opens, with its edges there drawn as
+  stand-ins, where it used to fail with a crash.
 
 ## [0.1.3] - 2026-10-06
 

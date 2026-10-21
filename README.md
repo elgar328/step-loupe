@@ -3,11 +3,11 @@
 **The example app for [step-io](https://github.com/elgar328/step-io).**
 
 A single-file, in-browser **STEP (ISO 10303) viewer** that renders what step-io
-reads — b-rep geometry, the assembly tree, PMI (features, dimensions, tolerances,
-datums), units, and a provenance report — with three.js, inline in one
-self-contained HTML file. `src/lib.rs` is the whole glue between step-io
-(compiled to WebAssembly) and the page, so it doubles as a worked example of
-step-io's reading API.
+reads — b-rep solids and surface bodies, wireframes, the assembly tree, PMI
+(features, dimensions, tolerances, datums), units, and a provenance report — with
+three.js, inline in one self-contained HTML file. `src/lib.rs` is the whole glue
+between step-io (compiled to WebAssembly) and the page, so it doubles as a worked
+example of step-io's reading API.
 
 ![step-loupe viewing NIST CTC 05 — b-rep, PMI, and datums, on desktop and mobile](https://github.com/elgar328/step-loupe/releases/download/assets/screenshot.webp)
 
