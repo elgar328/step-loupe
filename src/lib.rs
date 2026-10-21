@@ -1180,31 +1180,64 @@ fn flatten_world(pts: &[[f64; 3]], world: &Mat) -> Vec<f32> {
 
 // ---------- NURBS evaluation (rational B-spline) ----------
 
-/// Curvature-adaptive tessellation of a rational B-spline curve: subdivide the
-/// parameter interval only where the curve bends, so it stays smooth at any
-/// scale while a straight span collapses to its endpoints. Scale-invariant (the
-/// flatness test is relative to the local chord).
-const CURVE_FLATNESS: f64 = 0.01; // chord deviation / chord (~2.8° per segment)
-const CURVE_MIN_DEPTH: u32 = 1; // force one split (S-curves whose mid sits on the chord)
-const CURVE_MAX_DEPTH: u32 = 9; // ≤ 2^9 segments — a safety cap; flatness stops earlier
+/// Curvature-adaptive tessellation of a rational B-spline curve. Each knot
+/// span is subdivided on its own, only where the curve bends, so the curve
+/// keeps every turn it makes at a knot while a straight span collapses to its
+/// endpoints (a curve of one span is split at least once); a degree-1 curve
+/// (a polyline) is its control points. Scale-invariant (the flatness test is
+/// relative to the local chord).
+const CURVE_FLATNESS: f64 = 0.01; // chord deviation / chord (~4.6° of arc per segment)
+const CURVE_MAX_DEPTH: u32 = 9; // ≤ 2^9 segments per span — a safety cap
+const CURVE_MAX_DEGREE: usize = 25; // step-io's to_nurbs gives degrees 1–25
 
 fn tessellate_nurbs(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize) -> Vec<[f64; 3]> {
     let n = cp.len();
-    if n == 0 || w.len() != n || u.len() < n + p + 1 {
+    if n == 0 || w.len() != n || u.len() < n + p + 1 || p > CURVE_MAX_DEGREE {
         return cp.to_vec();
     }
-    let u0 = u[p];
-    let u1 = u[n];
     // Bail unless the knot span is strictly positive (partial_cmp also bails on NaN).
-    if u1.partial_cmp(&u0) != Some(std::cmp::Ordering::Greater) {
+    if u[n].partial_cmp(&u[p]) != Some(std::cmp::Ordering::Greater) {
         return cp.to_vec();
     }
-    let eval = |t: f64| eval_point(cp, w, u, p, t);
-    let p0 = eval(u0);
-    let p1 = eval(u1 - (u1 - u0) * 1e-9); // half-open span: nudge off the last knot
-    let mut out = vec![p0];
-    subdivide_curve(&eval, u0, u1, p0, p1, 0, &mut out);
-    out.push(p1);
+    if p == 1 {
+        return cp.to_vec();
+    }
+    let spans = (p..n)
+        .filter(|&j| u[j + 1].partial_cmp(&u[j]) == Some(std::cmp::Ordering::Greater))
+        .count();
+    let mut out: Vec<[f64; 3]> = Vec::new();
+    for j in p..n {
+        let (a, b) = (u[j], u[j + 1]);
+        // An empty span (or a NaN knot) holds no curve.
+        if b.partial_cmp(&a) != Some(std::cmp::Ordering::Greater) {
+            continue;
+        }
+        let eval = |t: f64| eval_span(cp, w, u, p, j, t);
+        let pa = match out.last() {
+            Some(&q) => q,
+            None => {
+                let q = eval(a);
+                out.push(q);
+                q
+            }
+        };
+        let pb = eval(b);
+        if spans == 1 {
+            // A lone span is split once regardless: a shallow arc can pass the
+            // test at its three sample points yet bow further between them.
+            let mid = 0.5 * (a + b);
+            let pm = eval(mid);
+            subdivide_curve(&eval, a, mid, pa, pm, 1, &mut out);
+            out.push(pm);
+            subdivide_curve(&eval, mid, b, pm, pb, 1, &mut out);
+        } else {
+            subdivide_curve(&eval, a, b, pa, pb, 0, &mut out);
+        }
+        out.push(pb);
+    }
+    if out.len() < 2 {
+        return cp.to_vec();
+    }
     out
 }
 
@@ -1222,8 +1255,13 @@ fn subdivide_curve<F: Fn(f64) -> [f64; 3]>(
     }
     let m = 0.5 * (a + b);
     let pm = eval(m);
-    // Flat enough once past the minimum depth: the midpoint barely leaves the chord.
-    if depth >= CURVE_MIN_DEPTH && point_line_dist(pm, pa, pb) <= CURVE_FLATNESS * dist3(pa, pb) {
+    // Flat enough: the midpoint and both quarter points barely leave the chord
+    // (the quarter points catch an S whose middle sits on it).
+    let tol = CURVE_FLATNESS * dist3(pa, pb);
+    if point_segment_dist(pm, pa, pb) <= tol
+        && point_segment_dist(eval(0.5 * (a + m)), pa, pb) <= tol
+        && point_segment_dist(eval(0.5 * (m + b)), pa, pb) <= tol
+    {
         return;
     }
     subdivide_curve(eval, a, m, pa, pm, depth + 1, out);
@@ -1236,55 +1274,44 @@ fn dist3(a: [f64; 3], b: [f64; 3]) -> f64 {
     (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt()
 }
 
-/// Perpendicular distance from `p` to the line through `a`-`b` (the chord's
-/// sagitta at `p`); falls back to point distance when the chord is degenerate
-/// (a≈b, e.g. a closed curve).
-fn point_line_dist(p: [f64; 3], a: [f64; 3], b: [f64; 3]) -> f64 {
+/// Distance from `p` to the segment `a`-`b`, so a curve that doubles back
+/// along its chord reads as off it; point distance when the chord is
+/// degenerate (a≈b, e.g. a closed curve).
+fn point_segment_dist(p: [f64; 3], a: [f64; 3], b: [f64; 3]) -> f64 {
     let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-    let ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
     let len2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
     if len2 < 1e-24 {
         return dist3(p, a);
     }
-    let cross = [
-        ap[1] * ab[2] - ap[2] * ab[1],
-        ap[2] * ab[0] - ap[0] * ab[2],
-        ap[0] * ab[1] - ap[1] * ab[0],
-    ];
-    ((cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]) / len2).sqrt()
+    let ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]];
+    let t = ((ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / len2).clamp(0.0, 1.0);
+    dist3(p, [a[0] + t * ab[0], a[1] + t * ab[1], a[2] + t * ab[2]])
 }
 
-fn eval_point(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize, t: f64) -> [f64; 3] {
-    let mut num = [0.0f64; 3];
-    let mut den = 0.0f64;
-    for i in 0..cp.len() {
-        let b = basis(i, p, t, u) * w[i];
-        den += b;
-        for k in 0..3 {
-            num[k] += b * cp[i][k];
+/// The point at `t` of the curve's piece on knot span `j` (`u[j] <= t <=
+/// u[j + 1]`), by de Boor's algorithm on the span's `p + 1` control points in
+/// homogeneous coordinates.
+fn eval_span(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize, j: usize, t: f64) -> [f64; 3] {
+    let mut d = [[0.0f64; 4]; CURVE_MAX_DEGREE + 1];
+    for (i, di) in d.iter_mut().enumerate().take(p + 1) {
+        let (c, wi) = (cp[j - p + i], w[j - p + i]);
+        *di = [c[0] * wi, c[1] * wi, c[2] * wi, wi];
+    }
+    for r in 1..=p {
+        for i in (r..=p).rev() {
+            let lo = u[j - p + i];
+            let alpha = (t - lo) / (u[j + 1 + i - r] - lo);
+            let prev = d[i - 1];
+            for (x, q) in d[i].iter_mut().zip(prev) {
+                *x = (1.0 - alpha) * q + alpha * *x;
+            }
         }
     }
-    if den.abs() < 1e-12 {
-        return cp[0];
+    let [x, y, z, h] = d[p];
+    if h.abs() < 1e-12 {
+        return cp[j];
     }
-    [num[0] / den, num[1] / den, num[2] / den]
-}
-
-fn basis(i: usize, p: usize, t: f64, u: &[f64]) -> f64 {
-    if p == 0 {
-        return if u[i] <= t && t < u[i + 1] { 1.0 } else { 0.0 };
-    }
-    let mut left = 0.0;
-    let d1 = u[i + p] - u[i];
-    if d1 > 0.0 {
-        left = (t - u[i]) / d1 * basis(i, p - 1, t, u);
-    }
-    let mut right = 0.0;
-    let d2 = u[i + p + 1] - u[i + 1];
-    if d2 > 0.0 {
-        right = (u[i + p + 1] - t) / d2 * basis(i + 1, p - 1, t, u);
-    }
-    left + right
+    [x / h, y / h, z / h]
 }
 
 // ---------- header (from the model, step-io >= 0.2) ----------

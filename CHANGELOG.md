@@ -79,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arc within one turn, where a trim like `1.E17` used to hang the read.
 - A file with broken B-spline values opens, with its edges there drawn as
   stand-ins, where it used to fail with a crash.
+- Curves are drawn through every corner: a curve, such as a polyline in PMI
+  lettering, could skip a stretch between two samples — the 5 of `.035` in
+  the sample file lost its top stroke. Curves also take less time to draw.
 
 ## [0.1.3] - 2026-10-06
 
