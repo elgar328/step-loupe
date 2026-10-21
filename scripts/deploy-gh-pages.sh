@@ -21,7 +21,7 @@ cp sample/nist-ctc05.step "$tmpdir/nist-ctc05.step"
 touch "$tmpdir/.nojekyll"
 
 # Inject Umami analytics into the hosted copy only (source + the downloadable
-# offline bundle stay analytics-free).
+# bundle stay analytics-free).
 python3 - "$tmpdir/index.html" scripts/analytics.html <<'PY'
 import sys
 page = open(sys.argv[1], encoding="utf-8").read()

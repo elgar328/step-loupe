@@ -237,7 +237,7 @@ const wasmBytes = new Uint8Array(await (await fetch('./pkg/step_loupe_bg.wasm'))
 // Compiled once; each read instantiates it in a Worker of its own, ended when
 // the read answers, so the memory the read took goes back with it. A classic
 // Worker: a module Worker from a blob: URL is refused when the page is opened
-// from file:// (the offline bundle). The Worker reads the file itself, a block
+// from file:// (the downloaded bundle). The Worker reads the file itself, a block
 // at a time, and hands the reader the pieces it asks for, so the reader never
 // holds the whole file. From file:// the page reads it instead and hands the
 // bytes over, which the Worker then gives out the same way.
@@ -968,7 +968,7 @@ async function loadUrl(url, up) {
 //     duplicated tab opens it again, and closing the tab clears it.
 //   - Every load sweeps entries older than ten minutes, or unreadable ones: a tab the
 //     browser blocked, or one closed before it loaded, leaves its entry behind.
-// Only pages on this origin share the storage, so the offline bundle and pages on other
+// Only pages on this origin share the storage, so the downloaded bundle and pages on other
 // hosts cannot hand anything over.
 const HANDOFF = 'step-loupe:';
 const HANDOFF_TTL_MS = 10 * 60 * 1000;
