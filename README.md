@@ -1,63 +1,49 @@
 # step-loupe
 
-**The example app for [step-io](https://github.com/elgar328/step-io).**
+**A STEP (ISO 10303) viewer in a single HTML file.**
 
-A single-file, in-browser **STEP (ISO 10303) viewer** that renders what step-io
-reads — b-rep solids and surface bodies, wireframes, the assembly tree, PMI
-(features, dimensions, tolerances, datums), units, and a provenance report — with
-three.js, inline in one self-contained HTML file. `src/lib.rs` is the whole glue
-between step-io (compiled to WebAssembly) and the page, so it doubles as a worked
-example of step-io's reading API.
+Open it [on the web](https://elgar328.github.io/step-loupe/), or download
+`step-loupe.html` from the [latest release](https://github.com/elgar328/step-loupe/releases/latest)
+and open it wherever you keep it. Then drop a STEP file onto the page.
+Nothing to install, no server to run, and your files never leave your device.
 
-![step-loupe viewing NIST CTC 05 — b-rep, PMI, and datums, on desktop and mobile](https://github.com/elgar328/step-loupe/releases/download/assets/screenshot.webp)
+step-loupe shows the geometry, the assembly tree, PMI (dimensions, tolerances,
+datums) and product data, plus a report of what reading the file kept,
+repaired or dropped.
 
-## Demo
+Built on [step-io](https://github.com/elgar328/step-io).
 
+[![step-loupe showing NIST CTC 05 on desktop and mobile](https://github.com/elgar328/step-loupe/releases/download/assets/screenshot.webp)](https://elgar328.github.io/step-loupe/?file=nist-ctc05.step)
+
+## Usage
+
+Try it on a sample file (NIST CTC 05, public domain):
 **<https://elgar328.github.io/step-loupe/?file=nist-ctc05.step>**
 
-Point `?file=<url>` at any STEP file (its host must allow CORS), or use the
-**Open STEP file** button / drag-and-drop.
-
-STEP records no "up" direction: Y-up CADs (SolidWorks, Inventor, Creo) and Z-up ones
-(CATIA, NX, Onshape, FreeCAD) write the same kind of file. The view opens Y-up; switch
-with the **Y↑** button in its corner, or open with `?up=z` (e.g.
-`?file=part.step&up=z`).
+- **Open a file:** drop it onto the page, or use the **Open STEP file** button.
+- **Open from a URL:** add `?file=<url>` to the address (the file's host must
+  allow CORS).
+- **Up axis:** the view opens Y-up. For a Z-up model, choose **Z axis up**
+  from the **Y↑** button, or add `&up=z` to a `?file=` address.
 
 ## Build
 
-Requires Rust with [wasm-pack](https://rustwasm.github.io/wasm-pack/), plus Python 3.
+Requires Rust with [wasm-pack](https://rustwasm.github.io/wasm-pack/) and
+Python 3.
 
 ```sh
 wasm-pack build --target no-modules --release
-python3 scripts/build_single.py   # inlines the wasm glue → step-loupe.html
+python3 scripts/build_single.py   # → step-loupe.html
 ```
 
-The result, `step-loupe.html`, is fully self-contained (three.js loads from a CDN).
-
-## Layout
-
-```
-src/lib.rs            Rust → wasm glue (load_step)
-src/index.html        viewer frontend (source; not the deployed page)
-scripts/              build + deploy tooling
-sample/               example STEP file
-```
-
-## Example file
-
-`sample/nist-ctc05.step` is **NIST CTC 05** (AP242 e1), a public-domain part from
-the NIST MBE PMI Validation & Conformance Testing set.
-
-## Releasing
-
-The hosted demo is deployed to the `gh-pages` branch and each release attaches a
-downloadable, offline `step-loupe.html` — see [docs/RELEASING.md](docs/RELEASING.md).
+The result is a single `step-loupe.html`; three.js loads from a CDN, so it
+needs a network connection.
 
 ## Analytics
 
-The hosted demo uses [Umami](https://umami.is), cookieless privacy-friendly
-analytics; the `?file=` URL is excluded, so the STEP files you open are never
-recorded. The downloadable offline build carries no analytics.
+The web version uses [Umami](https://umami.is), cookieless analytics that
+leaves out the `?file=` address, so the files you open are never recorded.
+The downloaded `step-loupe.html` carries no analytics.
 
 ## License
 
