@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A file opens framed to the points it draws rather than to their bounding
   box, so the model fills the view, with a small margin at the edges.
+- Clicking a row in the tree selects it without opening or closing it; its
+  arrow does that.
 
 ## [0.1.4] - 2026-10-21
 

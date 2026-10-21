@@ -184,6 +184,13 @@
     #up-btn { min-height: 44px; min-width: 48px; font-size: 14px; }
     #up-menu button { min-height: 44px; font-size: 14px; }
   }
+  /* touch input: taller rows, and a wider tap area on the chevrons that stays
+     inside its row */
+  @media (pointer: coarse) {
+    .row { padding: 5px 4px; }
+    .chev { position: relative; }
+    .chev::after { content: ''; position: absolute; inset: -5px; }
+  }
 </style>
 </head>
 <body>
@@ -656,7 +663,8 @@ function clearHighlight() {
 }
 
 // ---- tree build (native <details>/<summary>) ----
-// The whole row is the toggle target; a click also drives the 3D highlight.
+// The chevron opens and closes a row; a click elsewhere on it selects, which
+// drives the 3D highlight.
 // Children are built lazily on a <details>'s first open (glitch-free: native
 // owns the open/closed state, we only fill once).
 function esc(s) {
@@ -750,7 +758,12 @@ function renderNode(node, depth) {
         for (const c of node.children) det.appendChild(renderNode(c, depth + 1));
       }
     });
-    sum.addEventListener('click', () => selectRow(sum, node));
+    sum.addEventListener('click', (e) => {
+      if (e.target.closest('.chev')) return;
+      // Enter or Space on a focused row (a click with detail 0) still toggles it.
+      if (e.detail !== 0) e.preventDefault();
+      selectRow(sum, node);
+    });
     sum.addEventListener('mouseenter', () => hoverNode(node));
     return det;
   }
