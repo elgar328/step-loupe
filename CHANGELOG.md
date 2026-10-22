@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with an icon (amber for PMI and wireframes), and heads every section alike.
 - The report groups the digits of its counts (13,394), and the detail pane
   names an item's kind only when its label does not already start with it.
+- On a touch screen of any size, such as a tablet's, the view's controls are
+  sized for a finger.
 - An assembly that places the same part many times opens faster.
 
 ### Fixed

@@ -27,12 +27,12 @@ const wasmBytes = b64bytes(WASM_B64);"""
 
 if old not in html:
     sys.exit("error: wasm load anchor not found in src/index.html")
-name = '<span class="ver" id="about-name"></span>'
+name = '<span class="ver" id="version"></span>'
 if name not in html:
     sys.exit("error: version anchor not found in src/index.html")
 version = tomllib.loads((root / "Cargo.toml").read_text())["package"]["version"]
 
-out = html.replace(old, new).replace(name, f'<span class="ver" id="about-name">v{version}</span>').replace(
+out = html.replace(old, new).replace(name, f'<span class="ver" id="version">v{version}</span>').replace(
     "<title>step-loupe — STEP viewer</title>",
     "<title>step-loupe — STEP viewer (single file)</title>",
 )

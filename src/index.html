@@ -20,6 +20,17 @@
     --error: #ff7b72;
     --row-hover: #20252e;
     --row-sel: #22355a;
+    --float: #262b35e6;     /* the view's settings button */
+    --float-hi: #313846f0;  /* the same, hovered or open */
+    --float-line: #363d4b;  /* border of the button and its menu */
+    --menu: #1d2129f7;      /* the settings menu */
+    --menu-line: #2c323d;   /* separators in the menu */
+    --menu-hover: #2a303b;
+    --well: #121419;        /* track of a two-way switch */
+    --chip: #3a4252;        /* the chosen side of a switch */
+    --icon: #8b93a1;        /* tree icons */
+    --icon-part: #c3cad4;
+    --amber: #f2ad54;       /* PMI and wireframes; the view's WIRE_RGB */
     --fs-row: 13px;         /* node label */
     --fs-meta: 11.5px;      /* key/value meta lines */
     --fs-group: 11px;       /* uppercase group headers */
@@ -80,14 +91,14 @@
     display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
   }
   #vm-btn, #vm-panel {
-    border: 1px solid #363d4b; box-shadow: 0 8px 24px #0008;
+    border: 1px solid var(--float-line); box-shadow: 0 8px 24px #0008;
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   }
   #vm-btn {
     display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
-    color: var(--muted); background: #262b35e6; border-radius: 7px; cursor: pointer;
+    color: var(--muted); background: var(--float); border-radius: 7px; cursor: pointer;
   }
-  #vm-btn[aria-expanded="true"] { color: #fff; background: #313846f0; }
+  #vm-btn[aria-expanded="true"] { color: #fff; background: var(--float-hi); }
   #vm-btn svg, .vm-act svg {
     fill: none; stroke: currentColor; stroke-width: 1.75;
     stroke-linecap: round; stroke-linejoin: round;
@@ -96,33 +107,33 @@
   #vm-panel {
     width: max-content; min-width: 248px; max-width: calc(100vw - 20px);
     padding: 6px; display: flex; flex-direction: column;
-    background: #1d2129f7; border-radius: 12px; font-size: 12.5px; color: var(--text);
+    background: var(--menu); border-radius: 12px; font-size: 12.5px; color: var(--text);
   }
   #vm-panel[hidden] { display: none; }   /* display:flex would beat [hidden] */
   .vm-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 6px 5px 8px; min-height: 34px; }
-  .seg { flex: none; display: inline-flex; padding: 2px; background: #121419; border-radius: 8px; }
+  .seg { flex: none; display: inline-flex; padding: 2px; background: var(--well); border-radius: 8px; }
   .seg button {
-    font: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted); background: none; border: 0;
+    font-size: 11.5px; font-weight: 500; color: var(--muted); background: none; border: 0;
     border-radius: 6px; padding: 4px 9px; cursor: pointer;
   }
-  .seg button[aria-pressed="true"] { color: #fff; background: #3a4252; box-shadow: 0 1px 2px #0006; }
+  .seg button[aria-pressed="true"] { color: #fff; background: var(--chip); box-shadow: 0 1px 2px #0006; }
   .vm-act {
     display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 0 8px;
-    font: inherit; font-size: 12.5px; color: var(--text); text-align: left;
+    font-size: 12.5px; color: var(--text); text-align: left;
     background: none; border: 0; border-radius: 8px; cursor: pointer;
   }
   .vm-act svg { width: 16px; height: 16px; color: var(--muted); }
   .vm-act:disabled { color: var(--faint); cursor: default; }
   .vm-act:disabled svg { color: var(--faint); }
-  #vm-panel hr { border: 0; border-top: 1px solid #2c323d; margin: 5px -6px; }
+  #vm-panel hr { border: 0; border-top: 1px solid var(--menu-line); margin: 5px -6px; }
   .vm-about { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px 2px; }
   .vm-about b { font-weight: 650; }
   .vm-about .ver { margin-left: 6px; color: var(--faint); font-size: 11.5px; }
   .vm-about a { color: var(--muted); font-size: 12px; text-decoration: none; padding: 4px 6px; margin-right: -6px; border-radius: 6px; }
   @media (hover: hover) {
-    #vm-btn:hover { color: #fff; background: #313846f0; }
+    #vm-btn:hover { color: #fff; background: var(--float-hi); }
     .seg button:not([aria-pressed="true"]):hover { color: #fff; }
-    .vm-act:not(:disabled):hover, .vm-about a:hover { color: #fff; background: #2a303b; }
+    .vm-act:not(:disabled):hover, .vm-about a:hover { color: #fff; background: var(--menu-hover); }
   }
 
   /* sidebar head: the file control */
@@ -151,9 +162,8 @@
   }
   .row:hover { background: var(--row-hover); }
   .row.sel { background: var(--row-sel); }
-  /* read-only info rows (report/header) don't act selectable */
+  /* read-only info rows (report/header) don't act selectable, but still light up */
   .row.info { cursor: default; }
-  .row.info:hover { background: var(--row-hover); }  /* still give hover feedback */
 
   /* chevron: a CSS triangle in a fixed-width slot; leaves reserve the slot */
   .chev {
@@ -168,10 +178,10 @@
   /* the stacked content: title line + meta lines */
   .node-content { display: flex; flex-direction: column; min-width: 0; flex: 1; }
   .node-title { display: flex; align-items: center; min-width: 0; }
-  /* a small colour dot before the label says the row's kind */
+  /* a dot stands in for the icon of a kind that has none */
   .dot {
     flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    margin: 0 8px 0 2px; background: #6b7380;
+    margin: 0 8px 0 2px; background: var(--icon);
   }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .idtag { color: var(--faint); font-size: var(--fs-id); margin-left: 6px; font-variant-numeric: tabular-nums; }
@@ -187,7 +197,6 @@
     font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
     font-size: var(--fs-group); color: var(--muted);
   }
-  .row.group .dot { display: none; }
   .row.group.empty { cursor: default; }
   .row.group.empty > .node-content > .node-title > .label { color: var(--faint); }
   .none { color: var(--faint); font-size: 10.5px; margin-left: 6px; }
@@ -196,18 +205,17 @@
   .row.meta-sub > .node-content > .node-title > .label { color: var(--muted); font-size: 12px; }
   .row.meta-sub.empty { cursor: default; }
   .row.meta-sub.empty > .node-content > .node-title > .label { color: var(--faint); }
-  .row.meta-root .dot, .row.meta-sub .dot, .row.kv .dot { display: none; }
 
   /* an icon per kind (a dot for any other), grey, lighter for parts, and amber
      for what the view draws amber (PMI and wireframes) */
   .ico {
-    flex: none; width: 14px; height: 14px; margin: 0 7px 0 0; color: #8b93a1;
+    flex: none; width: 14px; height: 14px; margin: 0 7px 0 0; color: var(--icon);
     fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
   }
-  .k-Part .ico, .k-Component .ico { color: #c3cad4; }
+  .k-Part .ico, .k-Component .ico { color: var(--icon-part); }
   .k-Vertex .ico, .k-Point .ico { fill: currentColor; }   /* a point: the small circle, filled */
   .k-Dimension .ico, .k-Tolerance .ico, .k-Datum .ico,
-  .k-Curve .ico, .k-Point .ico, .k-Wireframe .ico { color: #f2ad54; }
+  .k-Curve .ico, .k-Point .ico, .k-Wireframe .ico { color: var(--amber); }
 
   /* ---- detail (inspector) pane ---- */
   .detail-title {
@@ -231,18 +239,17 @@
     #side { width: 100%; min-width: 0; max-width: none; flex: 1 1 auto; min-height: 0; border-right: 0; }
     #side-scroll { min-height: 0; overscroll-behavior: contain; } /* scroll in-panel, no page bleed */
     #detail { max-height: 40%; }                        /* inspector share of the bottom half */
-    .row { padding: 5px 6px; }                          /* larger touch targets */
+  }
+  /* touch input: taller rows, larger controls, and a wider tap area on the
+     chevrons that stays inside its row */
+  @media (pointer: coarse) {
+    .row { padding: 5px 6px; }
     #vm-btn { width: 44px; height: 44px; }
     #vm-btn svg { width: 26px; height: 26px; }
     #vm-panel { font-size: 14px; }
     .vm-row, .vm-act { min-height: 44px; }
     .vm-act { font-size: 14px; }
     .seg button { font-size: 13px; padding: 7px 11px; }
-  }
-  /* touch input: taller rows, and a wider tap area on the chevrons that stays
-     inside its row */
-  @media (pointer: coarse) {
-    .row { padding: 5px 6px; }
     .chev { position: relative; }
     .chev::after { content: ''; position: absolute; inset: -5px; }
   }
@@ -301,7 +308,7 @@
         <hr>
         <button type="button" class="vm-act" id="vm-fit" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-scan"/></svg>Fit to view</button>
         <hr>
-        <div class="vm-about"><span><b>step-loupe</b><span class="ver" id="about-name"></span></span><a href="https://github.com/elgar328/step-loupe" target="_blank" rel="noopener">GitHub ↗</a></div>
+        <div class="vm-about"><span><b>step-loupe</b><span class="ver" id="version"></span></span><a href="https://github.com/elgar328/step-loupe" target="_blank" rel="noopener">GitHub ↗</a></div>
       </div>
     </div>
   </div>
@@ -451,7 +458,7 @@ function resize() {
   aspect = w / h;
   updateProjection();
   // Line widths are in CSS pixels, the same at any device pixel ratio.
-  for (const m of [M.faint, M.hiLine, M.fallback]) m.resolution.set(w, h);
+  for (const m of [M.edges, M.hiLine, M.fallback]) m.resolution.set(w, h);
 }
 function updateProjection() {
   persp.aspect = aspect; persp.updateProjectionMatrix();
@@ -461,24 +468,25 @@ window.addEventListener('resize', resize);
 (function loop() { requestAnimationFrame(loop); controls.update(); renderer.render(scene, camera); })();
 
 // ---- materials ----
+const HI = 0x45c2ff; // highlight
 const M = {
   // Pushed back a little so a highlighted copy drawn over an edge, at the same
   // depth, always wins; vertices and highlights keep their true depth.
   // Colours come per segment: edges grey, wireframe curves amber (EDGE_RGB, WIRE_RGB).
-  faint: new LineMaterial({ color: 0xffffff, vertexColors: true, linewidth: 1.2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
-  hiLine: new LineMaterial({ color: 0x45c2ff, linewidth: 1.7 }),
+  edges: new LineMaterial({ color: 0xffffff, vertexColors: true, linewidth: 1.2, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }),
+  hiLine: new LineMaterial({ color: HI, linewidth: 1.7 }),
   fallback: new LineMaterial({ color: 0xff4444, linewidth: 3, dashed: true, dashSize: 0.5, gapSize: 0.3 }),
   pt: new THREE.PointsMaterial({ color: 0x888888, size: 4, sizeAttenuation: false }),
-  hiPt: new THREE.PointsMaterial({ color: 0x45c2ff, size: 7, sizeAttenuation: false }),
+  hiPt: new THREE.PointsMaterial({ color: HI, size: 7, sizeAttenuation: false }),
   mesh: new THREE.MeshNormalMaterial({ transparent: true, opacity: 0.4, side: THREE.DoubleSide }),
-  hiMesh: new THREE.MeshBasicMaterial({ color: 0x45c2ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide }),
+  hiMesh: new THREE.MeshBasicMaterial({ color: HI, transparent: true, opacity: 0.6, side: THREE.DoubleSide }),
 };
 const EDGE_RGB = [0.80, 0.83, 0.88], WIRE_RGB = [0.95, 0.68, 0.33];
 resize(); // now that M exists, size renderer + line-material resolution
 // Opaque draw order, the one three.js gave one object per edge/vertex (it orders
 // ties by material): edges, highlighted edges, fallback edges, vertices,
 // highlighted vertices — vertex dots stay visible on highlighted edges.
-const ORDER = { faint: 0, hiLine: 1, fallback: 2, pt: 3, hiPt: 4 };
+const ORDER = { edges: 0, hiLine: 1, fallback: 2, pt: 3, hiPt: 4 };
 
 // ---- state ----
 let HLMAP = {};         // node id -> extra render ids to highlight (features/PMI)
@@ -596,7 +604,7 @@ function buildObjects(geom, wire) {
     const geo = new LineSegmentsGeometry();
     geo.setPositions(segs);
     geo.setColors(segColors);
-    add(new LineSegments2(geo, M.faint), ORDER.faint);
+    add(new LineSegments2(geo, M.edges), ORDER.edges);
   }
   if (nFall) {
     const geo = new LineSegmentsGeometry();
@@ -813,7 +821,7 @@ function selectNode(node) {
 const DIM = new THREE.Color().setRGB(0.5, 0.5, 0.5, THREE.SRGBColorSpace).r;
 function dimRest(on) {
   const k = on ? DIM : 1;
-  M.faint.color.setScalar(k);
+  M.edges.color.setScalar(k);
   M.fallback.color.setHex(0xff4444).multiplyScalar(k);
 }
 
@@ -864,12 +872,13 @@ const KIND_ICON = {
 // Build the inner content of a row: [chevron][icon][label #id]. Attributes live
 // in the detail pane, not inline, so scene rows stay a single scannable line.
 function rowInner(node, { chevron }) {
+  const group = node.kind === 'Group';
   const chev = `<span class="chev${chevron ? '' : ' leaf'}"></span>`;
-  const emptyGroup = node.kind === 'Group' && !(node.children && node.children.length);
-  const id = (node.kind === 'Group' || node.id == null) ? '' : `<span class="idtag">#${node.id}</span>`;
+  const emptyGroup = group && !(node.children && node.children.length);
+  const id = (group || node.id == null) ? '' : `<span class="idtag">#${node.id}</span>`;
   const none = emptyGroup ? '<span class="none">(none)</span>' : '';
   const icon = KIND_ICON[node.kind];
-  const mark = icon ? `<svg class="ico" aria-hidden="true"><use href="#i-${icon}"/></svg>` : '<span class="dot"></span>';
+  const mark = group ? '' : icon ? `<svg class="ico" aria-hidden="true"><use href="#i-${icon}"/></svg>` : '<span class="dot"></span>';
   return `${chev}<div class="node-content"><div class="node-title">${mark}<span class="label">${esc(node.label)}</span>${id}${none}</div></div>`;
 }
 
