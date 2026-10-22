@@ -40,7 +40,7 @@ python3 scripts/build_single.py   # -> step-loupe.html
 
 Open `step-loupe.html` from file:// and over http (`python3 -m http.server`),
 in Safari and in a Chromium browser, and open a file with the button and by
-dropping it. Over http, also open `?file=sample/nist-ctc05.step`, the same with
+dropping it. From file://, also open one with the network off. Over http, also open `?file=sample/nist-ctc05.step`, the same with
 `&up=z`, and a `?from=` hand-over: in the page's console run
 `localStorage.setItem('step-loupe:t', JSON.stringify({name: 'a.step', text: await (await fetch('sample/nist-ctc05.step')).text(), at: Date.now()}))`,
 then open `?from=t`.

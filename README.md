@@ -4,8 +4,9 @@
 
 Open it [on the web](https://elgar328.github.io/step-loupe/), or download
 `step-loupe.html` from the [latest release](https://github.com/elgar328/step-loupe/releases/latest)
-and open it wherever you keep it. Then drop a STEP file onto the page.
-Nothing to install, no server to run, and your files never leave your device.
+and open it wherever you keep it, even offline. Then drop a STEP file onto
+the page. Nothing to install, no server to run, and your files never leave
+your device.
 
 step-loupe shows the geometry, the assembly tree, PMI (dimensions, tolerances,
 datums) and product data, plus a report of what reading the file kept,
@@ -37,8 +38,8 @@ wasm-pack build --target no-modules --release
 python3 scripts/build_single.py   # → step-loupe.html
 ```
 
-The result is a single `step-loupe.html`; three.js loads from a CDN, so it
-needs a network connection.
+The result is a single `step-loupe.html` with the reader and three.js built
+in, so it works offline.
 
 ## Analytics
 
@@ -50,3 +51,6 @@ The downloaded `step-loupe.html` carries no analytics.
 
 Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE)
 at your option.
+
+`step-loupe.html` includes [three.js](https://threejs.org) (MIT), whose
+files are in [`vendor/`](vendor/three-0.160.0).

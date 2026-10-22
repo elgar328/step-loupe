@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Report counts group their digits (13,394), and the detail pane no longer
   repeats a kind its label already shows.
 - An assembly that places the same part many times opens faster.
-- The page no longer loads Shoelace; three.js is its only CDN dependency.
+- The downloaded file works offline and is smaller: three.js is built in,
+  so nothing is fetched from a CDN.
 
 ### Fixed
 

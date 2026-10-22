@@ -314,10 +314,15 @@
   </div>
 </div>
 
+<!-- three.js r160 (MIT, Three.js Authors), from vendor/; the build puts each
+     module into the page, so the bundle loads nothing from elsewhere. -->
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three": "../vendor/three-0.160.0/build/three.module.min.js",
+  "three/addons/controls/OrbitControls.js": "../vendor/three-0.160.0/examples/jsm/controls/OrbitControls.js",
+  "three/addons/lines/LineSegments2.js": "../vendor/three-0.160.0/examples/jsm/lines/LineSegments2.js",
+  "three/addons/lines/LineSegmentsGeometry.js": "../vendor/three-0.160.0/examples/jsm/lines/LineSegmentsGeometry.js",
+  "three/addons/lines/LineMaterial.js": "../vendor/three-0.160.0/examples/jsm/lines/LineMaterial.js"
 }}
 </script>
 
