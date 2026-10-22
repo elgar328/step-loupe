@@ -92,7 +92,7 @@
     fill: none; stroke: currentColor; stroke-width: 1.75;
     stroke-linecap: round; stroke-linejoin: round;
   }
-  #vm-btn svg { width: 24px; height: 24px; stroke-width: 1.5; }
+  #vm-btn svg { width: 22px; height: 22px; }
   #vm-panel {
     width: max-content; min-width: 248px; max-width: calc(100vw - 20px);
     padding: 6px; display: flex; flex-direction: column;
@@ -171,7 +171,7 @@
   /* a small colour dot before the label says the row's kind */
   .dot {
     flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
-    margin: 0 8px 0 2px; background: #7d8590;
+    margin: 0 8px 0 2px; background: #6b7380;
   }
   .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .idtag { color: var(--faint); font-size: var(--fs-id); margin-left: 6px; font-variant-numeric: tabular-nums; }
@@ -180,9 +180,10 @@
   .mv { color: var(--text); word-break: break-word; }
   .mv.empty { color: var(--faint); }
 
-  /* group header rows (canonical top-level categories) */
-  .row.group { margin-top: 6px; }
-  .row.group > .node-content > .node-title > .label {
+  /* section headings: the top-level categories, and the report, header and units */
+  .row.group, .row.meta-root { margin-top: 6px; }
+  .row.group > .node-content > .node-title > .label,
+  .row.meta-root > .node-content > .node-title > .label {
     font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
     font-size: var(--fs-group); color: var(--muted);
   }
@@ -191,27 +192,22 @@
   .row.group.empty > .node-content > .node-title > .label { color: var(--faint); }
   .none { color: var(--faint); font-size: 10.5px; margin-left: 6px; }
 
-  /* report/header structural rows: bold root, muted sub-group */
-  .row.meta-root > .node-content > .node-title > .label { font-weight: 600; }
+  /* report/header sub-groups: muted */
   .row.meta-sub > .node-content > .node-title > .label { color: var(--muted); font-size: 12px; }
   .row.meta-sub.empty { cursor: default; }
   .row.meta-sub.empty > .node-content > .node-title > .label { color: var(--faint); }
   .row.meta-root .dot, .row.meta-sub .dot, .row.kv .dot { display: none; }
 
-  /* per-kind dot palette (type legend) */
-  .k-Feature .dot { background: #e3b341; }
-  .k-Part .dot { background: #a371f7; }
-  .k-Component .dot { background: #db61a2; }
-  .k-Solid .dot { background: #f85149; }
-  .k-Face .dot { background: #d29922; }
-  .k-Bound .dot { background: #8957e5; }
-  .k-Edge .dot { background: #4493f8; }
-  .k-Vertex .dot { background: #3fb950; }
-  .k-Product .dot { background: #db61a2; }
-  .k-Dimension .dot { background: #58a6ff; }
-  .k-Tolerance .dot { background: #f0883e; }
-  .k-Datum .dot { background: #39c5bb; }
-  .k-Mesh .dot { background: #8b949e; }
+  /* an icon per kind (a dot for any other), grey, lighter for parts, and amber
+     for what the view draws amber (PMI and wireframes) */
+  .ico {
+    flex: none; width: 14px; height: 14px; margin: 0 7px 0 0; color: #8b93a1;
+    fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .k-Part .ico, .k-Component .ico { color: #c3cad4; }
+  .k-Vertex .ico, .k-Point .ico { fill: currentColor; }   /* a point: the small circle, filled */
+  .k-Dimension .ico, .k-Tolerance .ico, .k-Datum .ico,
+  .k-Curve .ico, .k-Point .ico, .k-Wireframe .ico { color: #f2ad54; }
 
   /* ---- detail (inspector) pane ---- */
   .detail-title {
@@ -237,7 +233,7 @@
     #detail { max-height: 40%; }                        /* inspector share of the bottom half */
     .row { padding: 5px 6px; }                          /* larger touch targets */
     #vm-btn { width: 44px; height: 44px; }
-    #vm-btn svg { width: 28px; height: 28px; }
+    #vm-btn svg { width: 26px; height: 26px; }
     #vm-panel { font-size: 14px; }
     .vm-row, .vm-act { min-height: 44px; }
     .vm-act { font-size: 14px; }
@@ -253,6 +249,26 @@
 </style>
 </head>
 <body>
+<!-- Icons: Lucide (ISC, Lucide Icons and Contributors) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-package-2" viewBox="0 0 24 24"><path d="M12 3v6"/><path d="M16.76 3a2 2 0 0 1 1.8 1.1l2.23 4.479a2 2 0 0 1 .21.891V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9.472a2 2 0 0 1 .211-.894L5.45 4.1A2 2 0 0 1 7.24 3z"/><path d="M3.054 9.013h17.893"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></symbol>
+<symbol id="i-square" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/></symbol>
+<symbol id="i-square-dashed" viewBox="0 0 24 24"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></symbol>
+<symbol id="i-slash" viewBox="0 0 24 24"><path d="M22 2 2 22"/></symbol>
+<symbol id="i-circle-small" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></symbol>
+<symbol id="i-spline" viewBox="0 0 24 24"><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><path d="M5 17A12 12 0 0 1 17 5"/></symbol>
+<symbol id="i-waypoints" viewBox="0 0 24 24"><path d="m10.586 5.414-5.172 5.172"/><path d="m18.586 13.414-5.172 5.172"/><path d="M6 12h12"/><circle cx="12" cy="20" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="20" cy="12" r="2"/><circle cx="4" cy="12" r="2"/></symbol>
+<symbol id="i-triangle" viewBox="0 0 24 24"><path d="M13.73 4a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+<symbol id="i-ruler-dimension-line" viewBox="0 0 24 24"><path d="M10 15v-3"/><path d="M14 15v-3"/><path d="M18 15v-3"/><path d="M2 8V4"/><path d="M22 6H2"/><path d="M22 8V4"/><path d="M6 15v-3"/><rect x="2" y="12" width="20" height="8" rx="2"/></symbol>
+<symbol id="i-diff" viewBox="0 0 24 24"><path d="M12 3v14"/><path d="M5 10h14"/><path d="M5 21h14"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/></symbol>
+<symbol id="i-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></symbol>
+<symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></symbol>
+</svg>
 <div id="app">
   <div id="side">
     <div id="filebar">
@@ -274,7 +290,7 @@
       <div id="status" hidden></div>
     </div>
     <div id="vm">
-      <button type="button" id="vm-btn" title="View settings" aria-label="View settings" aria-expanded="false" aria-controls="vm-panel"><!-- Heroicons "adjustments-horizontal" (MIT) --><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"/></svg></button>
+      <button type="button" id="vm-btn" title="View settings" aria-label="View settings" aria-expanded="false" aria-controls="vm-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sliders-horizontal"/></svg></button>
       <div id="vm-panel" hidden>
         <div class="vm-row">Up axis
           <div class="seg" id="seg-up"><button type="button" data-v="y" aria-pressed="true">Y</button><button type="button" data-v="z" aria-pressed="false">Z</button></div>
@@ -283,7 +299,7 @@
           <div class="seg" id="seg-proj"><button type="button" data-v="persp" aria-pressed="true">Perspective</button><button type="button" data-v="ortho" aria-pressed="false">Orthographic</button></div>
         </div>
         <hr>
-        <button type="button" class="vm-act" id="vm-fit" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5h4M16 4h4v4M20 15v4h-4M8 20H4v-4"/></svg>Fit to view</button>
+        <button type="button" class="vm-act" id="vm-fit" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-scan"/></svg>Fit to view</button>
         <hr>
         <div class="vm-about"><span><b>step-loupe</b><span class="ver" id="about-name"></span></span><a href="https://github.com/elgar328/step-loupe" target="_blank" rel="noopener">GitHub ↗</a></div>
       </div>
@@ -837,14 +853,24 @@ function deselect() {
 function hoverNode(node) { selectNode(node); }
 function unhover() { if (selNode) selectNode(selNode); else clearHighlight(); }
 
-// Build the inner content of a row: [chevron][dot][label #id]. Attributes live
+// Each kind's icon (an id in the icon sprite at the top of <body>); other kinds get a dot.
+const KIND_ICON = {
+  Part: 'package-2', Component: 'package-2', Solid: 'box', 'Surface body': 'layers', Face: 'square',
+  Bound: 'square-dashed', Edge: 'slash', Vertex: 'circle-small', Wireframe: 'waypoints', Curve: 'spline',
+  Point: 'circle-small', Mesh: 'triangle', Item: 'file', Feature: 'tag', Dimension: 'ruler-dimension-line',
+  Tolerance: 'diff', Datum: 'flag',
+};
+
+// Build the inner content of a row: [chevron][icon][label #id]. Attributes live
 // in the detail pane, not inline, so scene rows stay a single scannable line.
 function rowInner(node, { chevron }) {
   const chev = `<span class="chev${chevron ? '' : ' leaf'}"></span>`;
   const emptyGroup = node.kind === 'Group' && !(node.children && node.children.length);
   const id = (node.kind === 'Group' || node.id == null) ? '' : `<span class="idtag">#${node.id}</span>`;
   const none = emptyGroup ? '<span class="none">(none)</span>' : '';
-  return `${chev}<div class="node-content"><div class="node-title"><span class="dot"></span><span class="label">${esc(node.label)}</span>${id}${none}</div></div>`;
+  const icon = KIND_ICON[node.kind];
+  const mark = icon ? `<svg class="ico" aria-hidden="true"><use href="#i-${icon}"/></svg>` : '<span class="dot"></span>';
+  return `${chev}<div class="node-content"><div class="node-title">${mark}<span class="label">${esc(node.label)}</span>${id}${none}</div></div>`;
 }
 
 // ---- detail (inspector) pane ----
@@ -936,10 +962,15 @@ function linkTree(out) {
   return (out.tree || []).map(ref);
 }
 
+// Opened at once, so a file shows its structure: the model, or in a file of
+// bare geometry, the geometry no part holds.
+const OPEN_FIRST = ['Model', 'Unplaced geometry'];
 function buildTree(roots) {
   selRow = null; selNode = null;
   const frag = document.createDocumentFragment();
-  for (const r of roots) frag.appendChild(renderNode(r, 0));
+  const els = roots.map((r) => frag.appendChild(renderNode(r, 0)));
+  const i = roots.findIndex((r) => OPEN_FIRST.includes(r.label) && r.children && r.children.length);
+  if (i >= 0) els[i].open = true;
   return frag;
 }
 

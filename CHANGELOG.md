@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   small part stands out.
 - Clicking a row in the tree selects it without opening or closing it; its
   arrow does that. Clicking a selected row clears the selection.
+- The tree opens with the model's top level showing, marks each row's kind
+  with an icon (amber for PMI and wireframes), and heads every section alike.
 - An assembly that places the same part many times opens faster.
 
 ### Fixed
