@@ -3,12 +3,14 @@
 
 Run `wasm-pack build --target no-modules --release` first, then this script.
 It inlines pkg/step_loupe.js (glue) and pkg/step_loupe_bg.wasm as base64 into
-src/index.html, producing step-loupe.html at the project root. three.js stays on
-the CDN (import map)."""
+src/index.html, producing step-loupe.html at the project root, and stamps the
+version from Cargo.toml into the view menu. three.js stays on the CDN (import
+map)."""
 
 import base64
 import pathlib
 import sys
+import tomllib
 
 root = pathlib.Path(__file__).parent.parent
 html = (root / "src/index.html").read_text()
@@ -25,8 +27,12 @@ const wasmBytes = b64bytes(WASM_B64);"""
 
 if old not in html:
     sys.exit("error: wasm load anchor not found in src/index.html")
+name = '<span class="ver" id="about-name"></span>'
+if name not in html:
+    sys.exit("error: version anchor not found in src/index.html")
+version = tomllib.loads((root / "Cargo.toml").read_text())["package"]["version"]
 
-out = html.replace(old, new).replace(
+out = html.replace(old, new).replace(name, f'<span class="ver" id="about-name">v{version}</span>').replace(
     "<title>step-loupe — STEP viewer</title>",
     "<title>step-loupe — STEP viewer (single file)</title>",
 )

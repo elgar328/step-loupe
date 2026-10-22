@@ -7,14 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A view menu, behind a settings button in the view's corner, replaces the
+  **Y↑** button. It holds the up axis, a perspective or orthographic view
+  (remembered for next time), **Fit to view**, and the version with a link to
+  the repository.
+
 ### Changed
 
 - A file opens framed to the points it draws rather than to their bounding
   box, so the model fills the view, with a small margin at the edges.
-- A new, dark look: one theme across the sidebar and the view, the app's
-  name at the top, and a welcome card to drop a file on or try the sample.
-  PMI lettering and other wireframes are drawn in amber, apart from the
-  edges, and vertices show only when picked.
+- A new, dark look: one theme across the sidebar and the view. PMI lettering
+  and other wireframes are drawn in amber, apart from the edges, and vertices
+  show only when picked.
 - While something is highlighted, the rest of the model fades back, so a
   small part stands out.
 - Clicking a row in the tree selects it without opening or closing it; its

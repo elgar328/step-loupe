@@ -23,13 +23,14 @@ Try it on a sample file (NIST CTC 05, public domain):
 - **Open a file:** drop it onto the page, or use the **Open STEP file** button.
 - **Open from a URL:** add `?file=<url>` to the address (the file's host must
   allow CORS).
-- **Up axis:** the view opens Y-up. For a Z-up model, choose **Z axis up**
-  from the **Y↑** button, or add `&up=z` to a `?file=` address.
+- **View menu:** the settings button at the view's top right switches to Z
+  up (or add `&up=z` to a `?file=` address), to an orthographic view, or fits
+  the model back into the view.
 
 ## Build
 
 Requires Rust with [wasm-pack](https://rustwasm.github.io/wasm-pack/) and
-Python 3.
+Python 3.11 or later.
 
 ```sh
 wasm-pack build --target no-modules --release
