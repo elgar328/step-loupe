@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arrow does that. Clicking a selected row clears the selection.
 - The tree opens with the model's top level showing, marks each row's kind
   with an icon (amber for PMI and wireframes), and heads every section alike.
+- The report groups the digits of its counts (13,394), and the detail pane
+  names an item's kind only when its label does not already start with it.
 - An assembly that places the same part many times opens faster.
 
 ### Fixed

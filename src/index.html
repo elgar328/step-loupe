@@ -889,8 +889,11 @@ function showDetail(node) {
   const el = document.getElementById('detail');
   const kidCount = node.children ? node.children.length : 0;
   const id = (node.kind === 'Group' || node.id == null) ? '' : `<span class="idtag">#${node.id}</span>`;
-  let html = `<div class="detail-title"><span class="label">${esc(node.label)}</span>`
-    + `<span class="kind">${esc(node.kind)}</span>${id}</div>`;
+  // The kind, unless the label already starts with it ("Edge (Line)", "Datum A").
+  const label = String(node.label), kindName = node.kind;
+  const named = label === kindName || label.startsWith(kindName + ' ') || label.startsWith(kindName + ':');
+  const kind = named ? '' : `<span class="kind">${esc(kindName)}</span>`;
+  let html = `<div class="detail-title"><span class="label">${esc(label)}</span>${kind}${id}</div>`;
   if (node.meta && node.meta.length) {
     html += node.meta.map(([k, v]) =>
       `<div class="detail-row"><span class="mk">${esc(k)}</span><span class="mv">${detailValueHtml(k, v)}</span></div>`).join('');
@@ -1013,6 +1016,9 @@ function textRow(s, depth) {
   row.innerHTML = `<span class="chev leaf"></span><div class="node-content"><div class="metaline"><span class="mv">${esc(s)}</span></div></div>`;
   return row;
 }
+// A count with its digits grouped: 13,394.
+const num = (n) => Number(n).toLocaleString('en-US');
+
 // A nested "title (n)" section listing up to CAP rendered items.
 function subSection(title, items, depth, render) {
   const CAP = 500;
@@ -1025,9 +1031,9 @@ function subSection(title, items, depth, render) {
     row.innerHTML = `<span class="chev leaf"></span><div class="node-content"><div class="node-title"><span class="label">${esc(title)} (0)</span></div></div>`;
     return row;
   }
-  const sec = infoSection('meta-sub', `${title} (${items.length})`, depth);
+  const sec = infoSection('meta-sub', `${title} (${num(items.length)})`, depth);
   items.slice(0, CAP).forEach(x => sec.appendChild(render(x, depth + 1)));
-  if (items.length > CAP) sec.appendChild(textRow(`… ${items.length - CAP} more`, depth + 1));
+  if (items.length > CAP) sec.appendChild(textRow(`… ${num(items.length - CAP)} more`, depth + 1));
   return sec;
 }
 
@@ -1039,9 +1045,9 @@ function showReport(r, warnings) {
   const root = infoSection('meta-root', 'Report', 0);
   // Provenance counts, one per line. `dropped` is not repeated here — its count
   // shows in the "dropped (N)" section title below.
-  root.appendChild(kvRow('input', String(r.n_in), 1));
-  root.appendChild(kvRow('kept', String(r.validated), 1));
-  root.appendChild(kvRow('synthesized', String(r.n_synth), 1));
+  root.appendChild(kvRow('input', num(r.n_in), 1));
+  root.appendChild(kvRow('kept', num(r.validated), 1));
+  root.appendChild(kvRow('synthesized', num(r.n_synth), 1));
   // Always show every category (empty ones render as "(0)").
   root.appendChild(subSection('dropped', drops, 1, ([id, why], d) => kvRow('#' + id, why, d)));
   root.appendChild(subSection('normalized', r.norm, 1, ([id, note], d) => kvRow('#' + id, note, d)));
