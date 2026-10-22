@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::Serialize;
 use step_io::scene::{
-    ApprovalDate, Edge, Face, Feature, FeatureGeometry, GeometricSet, Person, ProductDef, Rgb,
-    SetElement, Solid, SurfaceModel, Transform, Vertex,
+    ApprovalDate, Edge, Face, Feature, FeatureGeometry, GeometricSet, NurbsCurve, Person,
+    ProductDef, Rgb, Scene, SetElement, Solid, SurfaceModel, Transform, Vertex,
 };
 use step_io::EntityKey;
 use wasm_bindgen::prelude::*;
@@ -259,7 +259,8 @@ pub fn load_step(source: &Source, sink: &Sink) {
     };
 
     let scene = model.scene();
-    let mut b = Builder::new(sink);
+    let (curves, size) = edge_curves(&scene);
+    let mut b = Builder::new(sink, CURVE_SAG * size, curves);
     b.json.raw(r#"{"ok":true,"header":"#);
     b.json.value(&header);
     b.json.raw(r#","report":"#);
@@ -491,10 +492,15 @@ struct Builder<'a> {
     /// the faces/edges they reference back to highlightable 3D objects.
     hl_ids: HashMap<EntityKey, Vec<u32>>,
     groups: Vec<Node>,
+    /// How far a sampled curve may stray from its chord, in model units
+    /// (`tessellate_nurbs`'s `sag`).
+    sag: f64,
+    /// Each edge's curve as a NURBS, made once for every placed instance.
+    curves: HashMap<EntityKey, NurbsCurve>,
 }
 
 impl<'a> Builder<'a> {
-    fn new(sink: &'a Sink) -> Self {
+    fn new(sink: &'a Sink, sag: f64, curves: HashMap<EntityKey, NurbsCurve>) -> Self {
         Builder {
             next: 0,
             json: Json::new(sink),
@@ -502,6 +508,8 @@ impl<'a> Builder<'a> {
             geom: Geometry::new(sink),
             hl_ids: HashMap::new(),
             groups: Vec::new(),
+            sag,
+            curves,
         }
     }
 
@@ -781,6 +789,7 @@ impl<'a> Builder<'a> {
                                     &nc.weights,
                                     &nc.knots,
                                     nc.degree,
+                                    self.sag,
                                 );
                                 self.geom.push(cid, LINE, flatten_world(&pts, world), []);
                             }
@@ -903,7 +912,7 @@ impl<'a> Builder<'a> {
             return eid;
         }
         self.hl_ids.entry(edge.key()).or_default().push(eid);
-        let (d, fallback) = sample_edge(edge, world);
+        let (d, fallback) = sample_edge(edge, self.curves.get(&edge.key()), world, self.sag);
         self.geom
             .push(eid, if fallback { FALLBACK } else { LINE }, d, []);
         let curve = edge.curve();
@@ -1149,11 +1158,17 @@ fn def_label_meta(def: &ProductDef<'_>) -> (String, Vec<[String; 2]>) {
     (label, meta)
 }
 
-/// Sample an edge into a flat polyline (`[x,y,z, ...]`) baked to `world`. Falls
-/// back to a straight segment between the endpoints when `to_nurbs()` fails.
-fn sample_edge(edge: &Edge<'_>, world: &Mat) -> (Vec<f32>, bool) {
-    if let Some(nc) = edge.to_nurbs() {
-        let pts = tessellate_nurbs(&nc.control_points, &nc.weights, &nc.knots, nc.degree);
+/// Sample an edge, by its curve as a NURBS, into a flat polyline (`[x,y,z,
+/// ...]`) baked to `world`. Falls back to a straight segment between the
+/// endpoints when the edge has no NURBS.
+fn sample_edge(
+    edge: &Edge<'_>,
+    nurbs: Option<&NurbsCurve>,
+    world: &Mat,
+    sag: f64,
+) -> (Vec<f32>, bool) {
+    if let Some(nc) = nurbs {
+        let pts = tessellate_nurbs(&nc.control_points, &nc.weights, &nc.knots, nc.degree, sag);
         if pts.len() >= 2 {
             return (flatten_world(&pts, world), false);
         }
@@ -1184,13 +1199,52 @@ fn flatten_world(pts: &[[f64; 3]], world: &Mat) -> Vec<f32> {
 /// span is subdivided on its own, only where the curve bends, so the curve
 /// keeps every turn it makes at a knot while a straight span collapses to its
 /// endpoints (a curve of one span is split at least once); a degree-1 curve
-/// (a polyline) is its control points. Scale-invariant (the flatness test is
-/// relative to the local chord).
+/// (a polyline) is its control points. A piece is flat enough once it strays
+/// from its chord by at most `CURVE_FLATNESS` of the chord and by at most
+/// `sag` (model units; 0 for no such bound), so a curve as large as the model
+/// is sampled finer than a small one.
 const CURVE_FLATNESS: f64 = 0.01; // chord deviation / chord (~4.6° of arc per segment)
+const CURVE_SAG: f64 = 2.5e-5; // chord deviation / model size
 const CURVE_MAX_DEPTH: u32 = 9; // ≤ 2^9 segments per span — a safety cap
 const CURVE_MAX_DEGREE: usize = 25; // step-io's to_nurbs gives degrees 1–25
 
-fn tessellate_nurbs(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize) -> Vec<[f64; 3]> {
+/// Every edge's curve as a NURBS, by edge, and the diagonal of the box around
+/// every curve's control points, which holds every curve drawn (0 when there
+/// are none).
+fn edge_curves(scene: &Scene<'_>) -> (HashMap<EntityKey, NurbsCurve>, f64) {
+    let mut curves = HashMap::new();
+    let mut lo = [f64::INFINITY; 3];
+    let mut hi = [f64::NEG_INFINITY; 3];
+    let mut add = |pts: &[[f64; 3]]| {
+        for p in pts {
+            if p.iter().all(|x| x.is_finite()) {
+                for k in 0..3 {
+                    lo[k] = lo[k].min(p[k]);
+                    hi[k] = hi[k].max(p[k]);
+                }
+            }
+        }
+    };
+    for edge in scene.all_edges() {
+        if let Some(nc) = edge.to_nurbs() {
+            add(&nc.control_points);
+            curves.insert(edge.key(), nc);
+        }
+    }
+    for set in scene.all_geometric_sets() {
+        for element in set.elements() {
+            if let SetElement::Curve(curve) = element {
+                if let Some(nc) = curve.to_nurbs() {
+                    add(&nc.control_points);
+                }
+            }
+        }
+    }
+    let size = if lo[0] > hi[0] { 0.0 } else { dist3(lo, hi) };
+    (curves, size)
+}
+
+fn tessellate_nurbs(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize, sag: f64) -> Vec<[f64; 3]> {
     let n = cp.len();
     if n == 0 || w.len() != n || u.len() < n + p + 1 || p > CURVE_MAX_DEGREE {
         return cp.to_vec();
@@ -1227,11 +1281,11 @@ fn tessellate_nurbs(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize) -> Vec<[f64
             // test at its three sample points yet bow further between them.
             let mid = 0.5 * (a + b);
             let pm = eval(mid);
-            subdivide_curve(&eval, a, mid, pa, pm, 1, &mut out);
+            subdivide_curve(&eval, (a, pa), (mid, pm), 1, sag, &mut out);
             out.push(pm);
-            subdivide_curve(&eval, mid, b, pm, pb, 1, &mut out);
+            subdivide_curve(&eval, (mid, pm), (b, pb), 1, sag, &mut out);
         } else {
-            subdivide_curve(&eval, a, b, pa, pb, 0, &mut out);
+            subdivide_curve(&eval, (a, pa), (b, pb), 0, sag, &mut out);
         }
         out.push(pb);
     }
@@ -1241,13 +1295,14 @@ fn tessellate_nurbs(cp: &[[f64; 3]], w: &[f64], u: &[f64], p: usize) -> Vec<[f64
     out
 }
 
+/// Subdivide the piece between `(a, pa)` and `(b, pb)` (parameter, point),
+/// pushing the points strictly inside it.
 fn subdivide_curve<F: Fn(f64) -> [f64; 3]>(
     eval: &F,
-    a: f64,
-    b: f64,
-    pa: [f64; 3],
-    pb: [f64; 3],
+    (a, pa): (f64, [f64; 3]),
+    (b, pb): (f64, [f64; 3]),
     depth: u32,
+    sag: f64,
     out: &mut Vec<[f64; 3]>,
 ) {
     if depth >= CURVE_MAX_DEPTH {
@@ -1257,16 +1312,19 @@ fn subdivide_curve<F: Fn(f64) -> [f64; 3]>(
     let pm = eval(m);
     // Flat enough: the midpoint and both quarter points barely leave the chord
     // (the quarter points catch an S whose middle sits on it).
-    let tol = CURVE_FLATNESS * dist3(pa, pb);
+    let mut tol = CURVE_FLATNESS * dist3(pa, pb);
+    if sag > 0.0 {
+        tol = tol.min(sag);
+    }
     if point_segment_dist(pm, pa, pb) <= tol
         && point_segment_dist(eval(0.5 * (a + m)), pa, pb) <= tol
         && point_segment_dist(eval(0.5 * (m + b)), pa, pb) <= tol
     {
         return;
     }
-    subdivide_curve(eval, a, m, pa, pm, depth + 1, out);
+    subdivide_curve(eval, (a, pa), (m, pm), depth + 1, sag, out);
     out.push(pm);
-    subdivide_curve(eval, m, b, pm, pb, depth + 1, out);
+    subdivide_curve(eval, (m, pm), (b, pb), depth + 1, sag, out);
 }
 
 fn dist3(a: [f64; 3], b: [f64; 3]) -> f64 {

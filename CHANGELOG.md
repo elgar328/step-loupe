@@ -25,9 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   small part stands out.
 - Clicking a row in the tree selects it without opening or closing it; its
   arrow does that. Clicking a selected row clears the selection.
+- An assembly that places the same part many times opens faster.
 
 ### Fixed
 
+- Large curves, such as a part's outer rim, are drawn smoothly instead of
+  slightly faceted: a curve is sampled the finer the larger it is next to
+  the model.
 - Lines are as thick on a high-density (Retina) screen as on any other; they
   used to be half as thick there.
 
