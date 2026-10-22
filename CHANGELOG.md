@@ -9,36 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A view menu, behind a settings button in the view's corner, replaces the
-  **Y↑** button. It holds the up axis, a perspective or orthographic view
-  (remembered for next time), **Fit to view**, and the version with a link to
-  the repository. On any touch screen, a tablet's too, its controls are sized
-  for a finger.
+- A view menu under a settings button in the view's corner replaces the
+  **Y↑** button: the up axis, perspective or orthographic projection (the
+  choice is remembered), **Fit to view**, and the version with a link to the
+  repository. On touch screens its controls are finger-sized.
 
 ### Changed
 
-- A file opens framed to the points it draws rather than to their bounding
-  box, so the model fills the view, with a small margin at the edges.
-- A new, dark look: one theme across the sidebar and the view. PMI lettering
-  and other wireframes are drawn in amber, apart from the edges, and vertices
-  show only when picked.
-- While something is highlighted, the rest of the model fades back, so a
-  small part stands out.
-- Clicking a row in the tree selects it without opening or closing it; its
-  arrow does that. Clicking a selected row clears the selection.
-- The tree opens with the model's top level showing, marks each row's kind
-  with an icon (amber for PMI and wireframes), and heads every section alike.
-- The report groups the digits of its counts (13,394), and the detail pane
-  names an item's kind only when its label does not already start with it.
+- A new dark look: grey edges, amber PMI and wireframes, and vertices only
+  when selected.
+- A file opens framed to the points it draws, so the model fills the view.
+- The tree opens at the model's top level, shows each row's kind as an icon,
+  and gives every section the same heading.
+- Clicking a tree row selects it, and clicking it again clears the selection;
+  only its arrow opens or closes it.
+- While something is highlighted, the rest of the model fades.
+- Report counts group their digits (13,394), and the detail pane no longer
+  repeats a kind its label already shows.
 - An assembly that places the same part many times opens faster.
+- The page no longer loads Shoelace; three.js is its only CDN dependency.
 
 ### Fixed
 
-- Large curves, such as a part's outer rim, are drawn smoothly instead of
-  slightly faceted: a curve is sampled the finer the larger it is next to
-  the model.
-- Lines are as thick on a high-density (Retina) screen as on any other; they
-  used to be half as thick there.
+- Large curves, such as a part's outer rim, are no longer slightly faceted.
+- Lines are no longer half as thick on high-density (Retina) screens.
 
 ## [0.1.4] - 2026-10-21
 
