@@ -30,7 +30,7 @@
     --chip: #3a4252;        /* the chosen side of a switch */
     --icon: #8b93a1;        /* tree icons */
     --icon-part: #c3cad4;
-    --amber: #f2ad54;       /* PMI and wireframes; the view's WIRE_RGB */
+    --amber: #f9d79b;       /* PMI and wireframes: WIRE_RGB as the view shows it (linear -> sRGB) */
     --fs-row: 13px;         /* node label */
     --fs-meta: 11.5px;      /* key/value meta lines */
     --fs-group: 11px;       /* uppercase group headers */
@@ -915,7 +915,7 @@ function showDetail(node) {
 }
 
 function rowClass(node) {
-  let c = 'row k-' + node.kind;
+  let c = 'row k-' + node.kind.replace(/\s+/g, '-');
   if (node.kind === 'Group') {
     c += ' group';
     if (!(node.children && node.children.length)) c += ' empty';

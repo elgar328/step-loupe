@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A view menu, behind a settings button in the view's corner, replaces the
   **Y↑** button. It holds the up axis, a perspective or orthographic view
   (remembered for next time), **Fit to view**, and the version with a link to
-  the repository.
+  the repository. On any touch screen, a tablet's too, its controls are sized
+  for a finger.
 
 ### Changed
 
@@ -29,8 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with an icon (amber for PMI and wireframes), and heads every section alike.
 - The report groups the digits of its counts (13,394), and the detail pane
   names an item's kind only when its label does not already start with it.
-- On a touch screen of any size, such as a tablet's, the view's controls are
-  sized for a finger.
 - An assembly that places the same part many times opens faster.
 
 ### Fixed
