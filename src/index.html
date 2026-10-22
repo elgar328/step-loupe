@@ -834,7 +834,7 @@ function renderNode(node, depth) {
       if (e.target.closest('.chev')) return;
       // Enter or Space on a focused row (a click with detail 0) still toggles it.
       if (e.detail !== 0) e.preventDefault();
-      selectRow(sum, node);
+      if (e.detail !== 0 && sum === selRow) deselect(); else selectRow(sum, node);
     });
     sum.addEventListener('mouseenter', () => hoverNode(node));
     return det;
@@ -844,7 +844,7 @@ function renderNode(node, depth) {
   row.setAttribute('style', pad);
   row.innerHTML = rowInner(node, { chevron: false });
   if (!(node.kind === 'Group')) {
-    row.addEventListener('click', () => selectRow(row, node));
+    row.addEventListener('click', () => (row === selRow ? deselect() : selectRow(row, node)));
     row.addEventListener('mouseenter', () => hoverNode(node));
   }
   return row;

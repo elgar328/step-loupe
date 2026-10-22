@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - While something is highlighted, the rest of the model fades back, so a
   small part stands out.
 - Clicking a row in the tree selects it without opening or closing it; its
-  arrow does that.
+  arrow does that. Clicking a selected row clears the selection.
 
 ### Fixed
 
