@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-26
+
 ### Changed
 
 - Built on step-io 0.4. Tolerance magnitudes and dimension values that NIST's
@@ -132,7 +134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Load a model via the `?file=<url>` query parameter, the **Open STEP file**
   button, or drag-and-drop; responsive layout for narrow (mobile) screens.
 
-[Unreleased]: https://github.com/elgar328/step-loupe/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/elgar328/step-loupe/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/elgar328/step-loupe/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/elgar328/step-loupe/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/elgar328/step-loupe/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/elgar328/step-loupe/compare/v0.1.2...v0.1.3
