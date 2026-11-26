@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Built on step-io 0.4. Tolerance magnitudes and dimension values that NIST's
+  AP242 files write as complex measures now show, with most of the warnings
+  those files used to raise gone; a composite or datum feature lists and
+  highlights the faces of its components; and colours an AP203 file puts on
+  PMI wireframes are listed.
+
 ## [0.1.5] - 2026-10-22
 
 ### Added
